@@ -45,4 +45,4 @@
 
 ## License
 
-TBD
+MIT（见 [LICENSE](LICENSE)；上游血缘与致谢见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。

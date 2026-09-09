@@ -10,7 +10,7 @@
 | CDP 会话管理 | **page2pdf** `src/background/cdp.js` | 照该设计重写（MIT，带 attribution） |
 | 页面预处理 / 恢复 | **page2pdf** `src/background/prepare.js`（undo log 架构） | 以它为骨架重写，吸收 pdfsnap 的实测修正 |
 | Chromium 实测行为事实 | **full-page-pdf-snap** `chrome-mv3/cdp-vektor.js` | 全部采纳进我们的实现细节 |
-| 权限模型 | **full-page-pdf-snap**（debugger 走 optional，无 host_permissions） | 采纳，比 page2pdf 更克制 |
+| 权限模型 | **full-page-pdf-snap**（debugger 走 optional，无 host_permissions） | **不采纳**：与当前 Chrome 官方规范冲突（`debugger` 不允许出现在 `optional_permissions`）；我们 = debugger 进 required permissions + 无 host_permissions |
 | 最小机制验证 | **chrome-debug-screen-to-pdf**（295 行跑通全链路） | 证明核心路径 ~50 行，其余全是附加价值 |
 | 矢量 PDF 生成 | `Page.printToPDF`（三者一致） | 唯一路线，无争议 |
 | 大文件下载 | **page2pdf** offscreen + blob URL | 采纳（data: URL 作兜底） |
@@ -24,7 +24,7 @@
 
 - **guillesotelo/page2pdf**（MIT，v2.0.0）：与我们目标重合度最高的主参考。v1→v2 重写删除了 2.4 MB 的 html2canvas/jsPDF，完整实现了 prepare→capture→restore 管线，代码质量高（注释解释"为什么"）。弱点：`host_permissions: <all_urls>` + 安装即要 `debugger`；text 模式未处理标签页缩放（见 §2 zoom）；项目很新（8 commits），未经大规模用户验证——**我们是"提取优秀实现重构"，不是 fork**。
 - **ictrobot/chrome-debug-screen-to-pdf**（MIT）：最小真值基线。核心机制只占 ~50 行，验证了路线成立。无任何页面预处理，下载走 data: URL。独有价值：单页模式二分搜索 + `break-*` 重置 CSS。
-- **Bubu89/full-page-pdf-snap**（MIT）：主路线是滚动截图拼接（Firefox MV2 起家，Chrome MV3 为脚本化移植），矢量 CDP 是后加的 `cdp-vektor.js`（534 行）。**代码里沉淀了大量实测得到的 Chromium 行为事实**（缩放、viewport 高度、800 英寸上限、测量时机），是其最大价值；权限设计（debugger optional、零 host_permissions）也是四者中最佳。弱点：德语标识符、image-first 架构、代码是跨浏览器机械移植，直接复用价值低于其注释里的知识。
+- **Bubu89/full-page-pdf-snap**（MIT）：主路线是滚动截图拼接（Firefox MV2 起家，Chrome MV3 为脚本化移植），矢量 CDP 是后加的 `cdp-vektor.js`（534 行）。**代码里沉淀了大量实测得到的 Chromium 行为事实**（缩放、viewport 高度、800 英寸上限、测量时机——均标记为 upstream observation，见 §1.3），是其最大价值；权限设计（debugger optional、零 host_permissions）理念最克制，但其 optional debugger 与当前 Chrome 官方规范冲突（见 §1.9），仅作参考项目实现记录，不采纳。弱点：德语标识符、image-first 架构、代码是跨浏览器机械移植，直接复用价值低于其注释里的知识。
 - **mozilla/readability**（Apache-2.0，v0.6.0）：零运行时依赖，浏览器内只需 vendor `Readability.js`（2812 行）+ `Readability-readerable.js`。API：`new Readability(document.cloneNode(true), options).parse()`。注意：会改变传入文档（必须传克隆）；评分正则带拉丁文习惯（逗号密度），中文页效果需实测；`charThreshold` 默认 500 对中文偏严，可调。
 
 ## 1. 逐能力对比矩阵
@@ -37,20 +37,20 @@
 | pdfsnap | attach 前后用 `debugger.getTargets()` 查询是否已 attached；finally 中清理步骤逐一 try/catch（"清理错误不得丢弃已生成的 PDF"） | 清理纪律最好 |
 | screen-to-pdf | 简单 attach → try/finally → detach（.catch 吞错） | 足够验证机制 |
 
-**采纳**：page2pdf 的 `cdp.js` 设计 + pdfsnap 的"逐一容错清理"原则。
+**采纳**：page2pdf 的 `cdp.js` 设计 + pdfsnap 的"逐一容错清理"原则。（注：page2pdf 实际 prepare/capture 的页面注入路径是 `chrome.scripting.executeScript({func})` 函数序列化，跑在 ISOLATED world；`cdp.js` 里的 `Runtime.evaluate` 封装只是辅助手段，不是主 capture 路径。）
 
 ### 1.2 Screen media 与媒体特性
 
 - 三者都用 `Emulation.setEmulatedMedia({ media: 'screen' })`，结束时 `media: ''` 复位——**这是本路线的第一关键步**（pdfsnap 注释：不加则打出的是网站的打印视图，侧栏/导航全部消失）。
 - page2pdf 额外传 `features`：`prefers-reduced-motion: reduce`（配合 CSS 暂停动画）与可选 `prefers-color-scheme` 明暗覆盖。**采纳**。
 
-### 1.3 视口 / 缩放 / 测量（Chromium 实测事实，全部来自 pdfsnap 注释）
+### 1.3 视口 / 缩放 / 测量（upstream observation：来自 pdfsnap 注释的实测，web-paperize 尚未独立验证）
 
 1. **打印前必须把 viewport 高度覆盖为完整文档高度**（`Emulation.setDeviceMetricsOverride`）：否则 lazy 图片可能空白、`position: sticky` 元素位置错误。且必须**先设置、后打印**，不能边打边设。
-2. **标签页缩放必须参与计算**：用户把页面缩放到 150% 时，文档在 CSS 像素下变窄；忽略会导致右侧截断。用 `chrome.tabs.getZoom(tabId)` 取倍率乘到 viewport 尺寸上。⚠️ page2pdf 的 text 模式没做这一步——**这是我们已识别的参考实现缺陷，我们要修**。
+2. **标签页缩放可能必须参与计算**（upstream observation）：pdfsnap 注释称用户把页面缩放到 150% 时，文档在 CSS 像素下变窄，忽略会导致右侧截断，其做法是用 `chrome.tabs.getZoom(tabId)` 倍率乘到 viewport 尺寸上；page2pdf 的 text 模式未处理此项。⚠️ 该结论未经本项目验证：V0.1 实现阶段用「普通页 / 宽 overflow 页 × 100% / 150% zoom」四组实验实测后，再决定最终 width 策略（实验设计见 V0.1_SCOPE §4）。
 3. **文档高度要三重测量取最大值**：`scrollHeight`、`documentElement.getBoundingClientRect().bottom + scrollY`、`body` 同式——绝对定位的页脚、展开的菜单会超出滚动区域。
 4. **改变文档高度的操作（declutter、文章模式、宽度覆盖）必须发生在测量之前**，否则纸过高、尾部留白。
-5. 单张纸高度上限：pdfsnap 实测 **800 英寸（≈76800 CSS px）** 以上 Chromium 静默失败；page2pdf 自己的常量是 200 英寸；screen-to-pdf 二分上界 1000 英寸。我们取保守值：**200 英寸**，超出转多页。
+5. 单张纸高度上限（upstream observation）：pdfsnap 称 **800 英寸（≈76800 CSS px）** 以上 Chromium 静默失败；page2pdf 自用常量为 200 英寸；screen-to-pdf 二分上界 1000 英寸。三者不一致、均未经本项目验证；V0.1 只做分页不做单张长页，暂以 200 英寸作为未来实现的保守假设。
 6. 固定内容宽度（文章模式 reflow）时，**先设宽度、等 reflow（约 250ms）、再量高度**；超宽元素按打印机逻辑裁掉，不跟随。
 
 ### 1.4 Lazy-load / 字体 / 图片等待
@@ -105,10 +105,10 @@
 | 项目 | 安装时权限 | host_permissions | 评价 |
 | --- | --- | --- | --- |
 | page2pdf | debugger, scripting, storage, downloads, contextMenus, offscreen, tabs, activeTab | `<all_urls>` | 功能最全，隐私声明最难解释 |
-| pdfsnap | activeTab, downloads(+open), storage, contextMenus, notifications, scripting；**debugger 为 optional** | **无** | **最佳**：走图片路线的用户安装时零警告；debugger 在用户开启矢量模式时（设置页/弹窗点击=用户手势）再请求 |
+| pdfsnap | activeTab, downloads(+open), storage, contextMenus, notifications, scripting；**debugger 为 optional** | **无** | 理念最克制，但与当前 Chrome 官方规范冲突：`debugger` 不允许出现在 `optional_permissions`，属参考项目实现，不采纳 |
 | screen-to-pdf | debugger, downloads, tabs | 无 | 最小但安装即要 debugger |
 
-**采纳 pdfsnap 模型**：安装时 `activeTab + scripting + downloads + storage + offscreen`；`debugger` 放 `optional_permissions`，首次点击"导出 PDF"时（popup 内用户手势）`permissions.request`。V0.1 无 host_permissions、无 tabs、无 contextMenus/notifications。
+**我们的决定**：manifest required `permissions: [activeTab, scripting, downloads, storage, offscreen, debugger]`，无 host_permissions。Chrome 当前官方规范不允许 `debugger` 出现在 `optional_permissions`（pdfsnap 的 optional 做法属参考项目实现、与规范冲突，不采纳），因此 debugger 只能在安装时声明，运行时没有 request / debuggerGranted / revoke 流程。V0.1 无 host_permissions、无 tabs、无 contextMenus/notifications。
 
 ### 1.10 UI / 进度 / 错误反馈
 
@@ -136,12 +136,13 @@
 
 ## 2. 参考实现已识别缺陷清单（我们要修的）
 
-1. **page2pdf text 模式不处理标签页缩放**（pdfsnap 明证实测后果：右侧截断）。
+1. **page2pdf text 模式不处理标签页缩放**（pdfsnap 注释所述的实测后果：右侧截断；upstream observation，待我们实测确认）。
 2. page2pdf 的 `pageRanges` 缺失问题：无（它用测量法）；但它 200in 上限 vs pdfsnap 800in 实测——我们以 200in 保守值规避争议。
 3. page2pdf 打印前不重测文档高度（pdfsnap 证明 declutter/展开后高度会变；page2pdf 在 `preparePage` 末尾有 measure，但其 `primePage` 在 declutter 之前——顺序可接受，我们在 teardown 前再校验一次）。
 4. pdfsnap 单页超过 800in 直接切多张 800in 巨纸（实用性存疑）；我们超限即转 A4 分页并提示。
 5. screen-to-pdf 恒 `saveAs: true`、恒 data: URL——大文件易崩。
 6. 所有参考均无"捕获期间页面被导航"的防护（见 §1.11）。
+7. page2pdf 的 `img.decoding = 'sync'` 未记入 undo log（恢复后 decoding 仍为 sync）——我们实现时所有属性变更一律 `record()`，不继承该缺陷。
 
 ## 3. 代码血缘与许可证台账
 
@@ -154,4 +155,4 @@
 | SingleFile | 无 | 仅思路（AGPL，禁代码） | — |
 | Page to PDF | 闭源 | 仅 A/B benchmark 对象 | — |
 
-我们仓库的 License 建议 MIT（与主要参考一致，待用户确认）。
+项目自身 License 定为 MIT（仓库根 `LICENSE`）。任何上游代码实际复制前，先在 `THIRD_PARTY_NOTICES.md` 登记条目（V0.1 已建立该文件）；直接复制或 substantial reuse 的 MIT 代码保留原版权与许可声明，readability 后续 vendor 时保留 Apache-2.0 要求（LICENSE/NOTICE 随附）。

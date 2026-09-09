@@ -6,15 +6,15 @@
 ## 1. 总体数据流
 
 ```
-用户点击 popup「Save as PDF」（用户手势）
-  ↓ permissions.request(debugger)          # 仅首次；已授权则跳过
+用户点击 popup「Save as PDF」（用户手势，同时授 activeTab）
   ↓ runtime.sendMessage({action:'capture', overrides})
 [service worker]
   ↓ cdp.withDebugger(tabId, …)             # 引用计数 + try/finally detach
   ├─ Emulation.setEmulatedMedia({media:'screen', features:[reduced-motion]})
   ├─ prepare：primePage → declutter → expand → applyPrintCss   # 全程记 undo log
   ├─ 量取 contentWidth/contentHeight（三重测量取最大）
-  ├─ zoom = tabs.getZoom(tabId)；viewport 覆盖 = 尺寸 × zoom（打印前设好）
+  ├─ [实验开关 viewportOverride，默认关] 记录 zoom（tabs.getZoom）
+  │    是否/如何做 viewport 覆盖，待 V0.1_SCOPE §4 的 zoom 四组实测定稿
   ├─ 计算 paper/scale/margin（fitWidth：scale=printableWidthPx/contentWidth，clamp[0.1,1]）
   ├─ Page.printToPDF({ transferMode:'ReturnAsStream', … })
   ├─ IO.read 流式读取 → Uint8Array
@@ -66,12 +66,14 @@ web-paperize/
 - `expandContent()`：`<details>` 全开；内部滚动容器展开（跳过 >20000px）。
 - `applyPrintCss(css)`：动画暂停 / `print-color-adjust: exact` / 隐藏滚动条 + 分页友好规则（break-inside avoid、thead 重复）。
 - `measurePage()`：宽高各三重测量取最大 + title/url/host/dpr。
-- `restorePage()`：移除注入节点与 style → 逆序 undo → 清掉因此变空的 `style` 属性（DOM 逐字节还原）。
+- `restorePage()`：移除注入节点与 style → 逆序 undo → 清掉因此变空的 `style` 属性 → 回滚滚动位置。
 - 每个函数**幂等可重入**；`restorePage` 对元素已消失逐条容错。
+
+**恢复契约**：插件**主动施加**的 DOM/style/attribute/scroll/`<details>` 修改，必须全部经 undo log 恢复；预滚动触发的页面自身 JS 副作用（lazy 内容已加载、infinite scroll DOM 增长等）不承诺回滚。所有属性变更一律走 `record()`（含 `img.decoding`——page2pdf 存在未记录该属性导致恢复缺失的缺陷，不继承）。
 
 ### 3.3 capture.js
 - `capturePage(tabId, settings, {onProgress})`，整体在 `withDebugger` 内，内层再包 try/finally 调 `teardown`。
-- 顺序硬约束（来自审计 §1.3/§1.4）：**改高度的 prepare 全部完成 → 测量 → 二次测量取 max → 设 viewport（×zoom）→ 打印**。
+- 顺序硬约束（审计 §1.3/§1.4 的 upstream observation）：**改高度的 prepare 全部完成 → 测量 → （实验性 viewport 覆盖，若启用）→ 打印**。
 - printToPDF 参数：`printBackground:true, preferCSSPageSize:false, transferMode:'ReturnAsStream', generateTaggedPDF:true`（老版本删参重试）。
 - 捕获开始时记录 `location.href`；teardown 前校验未变（防导航后恢复悬空）。
 
@@ -89,7 +91,7 @@ web-paperize/
   - `getState` → {settings, tab:{id,title,url,capturable}, busy, debuggerGranted}
   - `capture` {overrides} → 执行并回 {filename, size, title, url}
   - `progress`（SW→popup 单向）→ {text, progress}
-- `chrome.debugger.onDetach`（用户点掉调试条）→ 清 busyTabs。
+- `chrome.debugger.onDetach`（用户点掉调试条）→ 仅标记该 tab 为外部 detach（供错误文案与短路判断）；**不清 busyTabs**——busy 状态只能由 `runCapture` 最外层 finally 清除，避免旧捕获还在 teardown 时放进第二次捕获。
 
 ### 3.7 popup
 - 打开即 `getState`；未授权 debugger → Save 按钮触发 `permissions.request`（popup 点击即用户手势）。
@@ -103,8 +105,8 @@ web-paperize/
 "optional_permissions": ["debugger"]
 ```
 
-- **无 host_permissions**：捕获由 popup 点击发起，activeTab 授权当前 tab 足够（比 page2pdf 的 `<all_urls>` 更克制，也是 pdfsnap 验证过的模型）。
-- debugger 延迟到首次使用请求；拒绝时给出引导文案；可在 popup 内随时 revoke。
+- **无 host_permissions**：捕获由 popup 点击发起，activeTab 授权当前 tab 足够（比 page2pdf 的 `<all_urls>` 更克制）。
+- `debugger` 为 manifest **required** 权限：Chrome 当前官方规范不允许其出现在 `optional_permissions`（pdfsnap 的 optional 方案属参考项目实现、与规范冲突，不采纳）。因此安装时即声明；运行时没有 permissions.request / debuggerGranted / revoke 流程，popup 不做相关状态。
 - 捕获期间 Chrome 顶部出现"正在调试"提示条属平台行为，无法去除；代码必须保证最短 attach 时间并在一切异常路径 detach。
 - 纯本地：无网络请求、无遥测、不上传任何页面内容。
 
@@ -112,12 +114,13 @@ web-paperize/
 
 1. debugger 的 detach 是最高优先级 finally；清理步骤**逐一容错**，任何一步失败不影响已产出结果与后续步骤。
 2. 恢复页面（undo log 逆序）与 media/viewport 复位在**同一 finally 链**内，即使 printToPDF 抛错也执行。
-3. 用户可读错误分类：① DevTools 已连接；② 受限页面；③ 该 tab 正在导出；④ 页面无内容/导航中断；⑤ 打印引擎失败（原始信息附后）。
+3. 用户可读错误分类：① DevTools 已连接；② 受限页面；③ 该 tab 正在导出；④ 页面无内容/导航中断；⑤ 打印引擎失败（原始信息附后）；⑥ 捕获中 debugger 被外部 detach（用户点了"取消调试"）。
 4. badge 错误态 4s 后自动清除；busyTabs 永远在 finally 中移除。
 
 ## 6. 测试策略（V0.1）
 
 - 自动化（Node，无浏览器）：`node --test` 对 `buildFilename`/`paperInches`/`marginInches`/`sanitizeFilename` 等纯函数跑单测；`prepare.js` 函数做语法自包含检查（new Function 序列化不抛错）。
+- 确定性本地回归：`tests/fixtures/benchmark.html`（离线、无网络依赖，覆盖 sticky/fixed、overlay、details、内部滚动、lazy 图、宽 table/pre、中文、背景、链接），先验证 prepare/restore 层与打印效果。
 - 手工 benchmark：`docs/V0.1_SCOPE.md` §4 的页面矩阵 × Page to PDF A/B 对照，逐项打勾留档（截图放 `docs/benchmark/`，gitignore 大文件）。
 
 ## 7. 演进预留（不在 V0.1 实现）
