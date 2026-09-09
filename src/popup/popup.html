@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>web-paperize</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Export PDF</h1>
+  </header>
+  <main>
+    <label class="row">Paper
+      <select id="paper">
+        <option value="a4">A4</option>
+        <option value="letter">Letter</option>
+      </select>
+    </label>
+    <label class="row">Layout
+      <select id="orientation">
+        <option value="auto">Auto</option>
+        <option value="portrait">Portrait</option>
+        <option value="landscape">Landscape</option>
+      </select>
+    </label>
+    <label class="row">Margin
+      <select id="margin">
+        <option value="none">None</option>
+        <option value="slim">Slim</option>
+        <option value="normal">Normal</option>
+        <option value="wide">Wide</option>
+      </select>
+    </label>
+
+    <div class="progress" id="progress" hidden>
+      <div class="bar"><div class="fill" id="fill"></div></div>
+      <div class="text" id="progressText"></div>
+    </div>
+    <div class="status" id="status" hidden></div>
+
+    <button id="save" class="primary">Save as PDF</button>
+  </main>
+  <footer>Rendered locally by Chrome. Nothing leaves your machine.</footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

@@ -24,11 +24,18 @@
 
 ## 状态
 
-研究阶段已完成第一轮参考实现审计，进入 V0.1 实现。
+V0.1 已实现，可 `Load unpacked` 使用；验证基准与真实网站 A/B benchmark 进行中（见 [docs/V0.1_SCOPE.md](docs/V0.1_SCOPE.md) §4）。
 
 - [docs/REFERENCE_IMPLEMENTATION_ASSESSMENT.md](docs/REFERENCE_IMPLEMENTATION_ASSESSMENT.md) — 四个参考项目的逐能力评估与代码血缘台账
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — V0.1 架构（模块契约、数据流、权限模型）
 - [docs/V0.1_SCOPE.md](docs/V0.1_SCOPE.md) — V0.1 功能范围与 A/B 验收标准
+
+## 使用（开发模式）
+
+1. `chrome://extensions` → 开启 **Developer mode** → **Load unpacked** → 选择本仓库根目录
+2. 打开任意网页 → 点击工具栏图标 → **Save as PDF**
+3. 权限说明：`debugger` 为安装时声明（Chrome 规范不允许 optional）；捕获期间 Chrome 顶部会出现"正在调试"提示条，导出完成后自动消失
+4. 测试：`npm test`（纯函数单测 + 注入函数自包含检查）；本地基准夹具：`tests/fixtures/benchmark.html`
 
 参考项目：
 

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>web-paperize 本地基准页 benchmark</title>
+<!--
+  确定性本地基准夹具（docs/V0.1_SCOPE.md §4）。
+  离线、无网络依赖：图片全部为内联 SVG data URI，样式全部内联。
+  一页覆盖：sticky header / fixed 悬浮按钮 / 可关闭 overlay / 折叠 details /
+  内部滚动容器 / lazy 图片（loading=lazy 与 data-src 惯例）/ 宽 table /
+  宽 pre 代码块 / 中文标题、正文、中英混排 / 背景色与渐变 / 锚点与外部链接 /
+  足够触发 A4 分页的总高度。
+-->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.7 -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #1f2430; }
+  .sticky-header {
+    position: sticky; top: 0; z-index: 10;
+    padding: 10px 20px; background: #4f46e5; color: #fff; font-weight: 600;
+  }
+  .float-button {
+    position: fixed; right: 24px; bottom: 24px; z-index: 20;
+    width: 48px; height: 48px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none; font-size: 20px; cursor: pointer;
+  }
+  .cookie-consent-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(9, 12, 28, 0.55);
+  }
+  .cookie-consent-overlay .panel {
+    background: #fff; padding: 24px; border-radius: 10px; max-width: 420px; text-align: center;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 20px 80px; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 20px; margin-top: 2.2em; }
+  .gradient-band {
+    background: linear-gradient(120deg, #4f46e5, #0d9488);
+    color: #fff; padding: 28px 24px; border-radius: 10px; margin: 24px 0;
+  }
+  .dark-band { background: #111827; color: #f9fafb; padding: 24px; border-radius: 10px; }
+  .inner-scroller {
+    height: 260px; overflow-y: auto;
+    border: 1px solid #d1d5db; border-radius: 8px; padding: 12px 16px; background: #f9fafb;
+  }
+  table.wide { border-collapse: collapse; min-width: 1600px; margin: 16px 0; }
+  table.wide th, table.wide td { border: 1px solid #9ca3af; padding: 6px 10px; font-size: 14px; }
+  table.wide th { background: #eef2ff; }
+  pre.wide-code {
+    background: #0b1020; color: #d1fae5; padding: 16px; border-radius: 8px;
+    overflow-x: auto; font: 13px/1.6 ui-monospace, Menlo, monospace; white-space: pre;
+  }
+  details { border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+  details > summary { cursor: pointer; font-weight: 600; }
+  img.sample { display: block; max-width: 100%; height: auto; margin: 14px 0; border-radius: 6px; }
+  .spacer { height: 1600px; background:
+    repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 24px, #eef2ff 24px, #eef2ff 48px); }
+  a { color: #1d4ed8; }
+</style>
+</head>
+<body>
+
+<div class="sticky-header">web-paperize 基准页 — 这个吸顶条在导出后应只出现一次</div>
+
+<button class="float-button" title="回到顶部">↑</button>
+
+<div class="cookie-consent-overlay" role="dialog" aria-label="consent">
+  <div class="panel">
+    <p>我们使用 cookie 来“改善”你的体验（这是一个测试用 cookie 墙，导出时应被移除）。</p>
+    <button onclick="this.closest('.cookie-consent-overlay').remove()">Accept all</button>
+  </div>
+</div>
+
+<main>
+  <h1>web-paperize 确定性基准页</h1>
+  <p>
+    本页用于回归测试网页导出 PDF 的全部预处理路径：
+    <a href="#section-details">锚点链接</a>、
+    <a href="https://example.com/" target="_blank" rel="noopener">外部链接</a>、
+    中英混排 typography（rendering、vector PDF、Chromium），
+    以及足够长的正文以触发 A4 分页。
+  </p>
+
+  <div class="gradient-band">
+    <strong>渐变背景条</strong> — 导出时应保留 printBackground 背景色与渐变。
+  </div>
+
+  <h2 id="section-details">折叠区域 details</h2>
+  <details>
+    <summary>折叠的第一段内容（导出时应被展开）</summary>
+    <p>折叠内容 A：这段文字在屏幕上默认不可见，导出 PDF 必须包含它。A collapsed details block must be opened before printing, and restored afterwards.</p>
+  </details>
+  <details>
+    <summary>折叠的第二段内容</summary>
+    <p>折叠内容 B：包含一个内联公式 x = 96 CSS px / inch，以及中文标点测试——「引号」、省略号……、破折号——。</p>
+  </details>
+
+  <h2>内部滚动容器 inner scroller</h2>
+  <p>下面这个容器在屏幕上可以滚动，高度被限制为 260px；导出时应展开为完整高度：</p>
+  <div class="inner-scroller" id="scroller">
+    <p><strong>滚动容器第 1 段。</strong>Content inside an overflow-y:auto container is normally clipped in a printout; the exporter must unroll it.</p>
+    <p>滚动容器第 2 段。中文正文行高与字距在 PDF 中应与屏幕一致。</p>
+    <p>滚动容器第 3 段。Three paragraphs down, still inside the scroller.</p>
+    <p>滚动容器第 4 段。如果导出后这段文字缺失，说明内部滚动展开失败。</p>
+    <p>滚动容器第 5 段。The quick brown fox jumps over the lazy dog（等宽与比例字体混排）。</p>
+    <p>滚动容器第 6 段（末尾）。END-OF-SCROLLER-MARKER</p>
+  </div>
+
+  <h2>图片 images</h2>
+  <p>三张 lazy 图片（<code>loading="lazy"</code>）与一张 <code>data-src</code> 惯例图片：</p>
+
+  <img class="sample" width="640" height="280" loading="lazy" alt="lazy indigo"
+       src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='280'%3E%3Crect width='100%25' height='100%25' fill='%234f46e5'/%3E%3Ctext x='24' y='150' font-size='28' fill='white' font-family='sans-serif'%3ELAZY 1 loading=lazy%3C/text%3E%3C/svg%3E">
+
+  <img class="sample" width="640" height="280" loading="lazy" alt="lazy teal"
+       src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='280'%3E%3Crect width='100%25' height='100%25' fill='%230d9488'/%3E%3Ctext x='24' y='150' font-size='28' fill='white' font-family='sans-serif'%3ELAZY 2 loading=lazy%3C/text%3E%3C/svg%3E">
+
+  <img class="sample" width="640" height="280" loading="lazy" alt="lazy amber"
+       src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='280'%3E%3Crect width='100%25' height='100%25' fill='%23d97706'/%3E%3Ctext x='24' y='150' font-size='28' fill='white' font-family='sans-serif'%3ELAZY 3 loading=lazy%3C/text%3E%3C/svg%3E">
+
+  <img class="sample" width="640" height="280" alt="data-src convention fallback"
+       data-src="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='280'%3E%3Crect width='100%25' height='100%25' fill='%23dc2626'/%3E%3Ctext x='24' y='150' font-size='28' fill='white' font-family='sans-serif'%3ELAZY 4 data-src convention%3C/text%3E%3C/svg%3E">
+
+  <h2>宽内容 wide content</h2>
+  <p>下面这张表最小宽度 1600px，用于测试 fitWidth 缩放与横向不截断：</p>
+  <div style="overflow-x: auto;">
+    <table class="wide">
+      <thead>
+        <tr><th>模块</th><th>语言</th><th>职责</th><th>行数(约)</th><th>依赖 chrome API</th><th>测试方式</th><th>备注</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>cdp.js</td><td>ESM</td><td>debugger 会话封装</td><td>120</td><td>debugger</td><td>手工 + 集成</td><td>引用计数 attach</td></tr>
+        <tr><td>prepare.js</td><td>ESM</td><td>页面预处理函数库</td><td>330</td><td>scripting(注入)</td><td>基准夹具</td><td>自包含函数</td></tr>
+        <tr><td>capture.js</td><td>ESM</td><td>捕获编排</td><td>200</td><td>debugger/tabs</td><td>手工 benchmark</td><td>顺序硬约束</td></tr>
+        <tr><td>settings.js</td><td>ESM</td><td>设置存储</td><td>60</td><td>storage</td><td>单测可覆盖</td><td>sync 存储</td></tr>
+        <tr><td>download.js</td><td>ESM</td><td>保存 PDF</td><td>110</td><td>downloads/offscreen</td><td>手工</td><td>blob URL 兜底 data</td></tr>
+        <tr><td>service-worker.js</td><td>ESM</td><td>入口与路由</td><td>170</td><td>全部</td><td>手工</td><td>busyTabs 互斥</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>超宽代码块（单行超长，测试 pre 不被切断/可读性）：</p>
+  <pre class="wide-code">const params = { landscape: false, printBackground: true, scale: 0.6667, paperWidth: 8.27, paperHeight: 11.69, marginTop: 0.2, marginBottom: 0.2, marginLeft: 0.2, marginRight: 0.2, preferCSSPageSize: false, displayHeaderFooter: false, headerTemplate: '&lt;span&gt;&lt;/span&gt;', footerTemplate: '&lt;span&gt;&lt;/span&gt;', transferMode: 'ReturnAsStream', generateTaggedPDF: true };</pre>
+
+  <div class="dark-band">
+    <strong>深色背景条</strong> — 白字深底，验证背景与前景色都保留。Dark band with light text: both must survive into the PDF.
+  </div>
+
+  <h2>分页压力 pagination</h2>
+  <p>下面的条纹 spacer 高 1600px，加上正文总高度足以触发多页 A4 分页；观察分页处是否切断文字行。</p>
+  <div class="spacer"></div>
+
+  <p>
+    尾段（分页后应完整出现）：中文排版句读测试——逗号、句号；分号；冒号：「直角引号」与（圆括号）交替，
+    English interleaved for mixed-script line breaking. This final paragraph must appear after the spacer,
+    and the sticky header above must NOT repeat on every page.
+    <a href="https://example.com/">末尾外部链接 example.com</a>。
+  </p>
+</main>
+
+</body>
+</html>

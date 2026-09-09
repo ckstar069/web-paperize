@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "web-paperize",
+  "version": "0.1.0",
+  "description": "Save the current page as a vector PDF rendered by Chrome itself. Local only, no telemetry.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage",
+    "offscreen",
+    "debugger"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Save as PDF"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
