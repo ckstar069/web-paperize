@@ -24,9 +24,14 @@
 
 ## 状态
 
-研究阶段。先对参考实现做 source-level 审计，产出评估与架构文档，评审通过后进入 V0.1 实现（仅「当前页 → 矢量 PDF」）。
+研究阶段已完成第一轮参考实现审计，进入 V0.1 实现。
 
-参考项目（详见后续 `docs/REFERENCE_IMPLEMENTATION_ASSESSMENT.md`）：
+- [docs/REFERENCE_IMPLEMENTATION_ASSESSMENT.md](docs/REFERENCE_IMPLEMENTATION_ASSESSMENT.md) — 四个参考项目的逐能力评估与代码血缘台账
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — V0.1 架构（模块契约、数据流、权限模型）
+- [docs/V0.1_SCOPE.md](docs/V0.1_SCOPE.md) — V0.1 功能范围与 A/B 验收标准
+
+参考项目：
+
 
 | 项目 | License | 用途 |
 | --- | --- | --- |
