@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Node / 构建产物（可重建）
+node_modules/
+dist/
+build/
+*.zip
+
+# Agent 任务临时目录
+.tmp/
+
+# 编辑器
+.idea/
+.vscode/
