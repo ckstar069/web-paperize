@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><style>
+  body { margin: 0; }
+  #tall { width: 100%; position: relative; }
+  .marker { font: 16px monospace; padding: 4px 8px; }
+  #end { position: absolute; bottom: 0; left: 0; }
+</style></head>
+<body>
+  <div id="tall">
+    <div class="marker">TOP-MARKER</div>
+    <div class="marker" id="end">END-MARKER</div>
+  </div>
+  <script>
+    // Height comes from ?h=CSS_PX (single sheet = paperHeight in inches * 96).
+    const px = new URLSearchParams(location.search).get('h');
+    document.getElementById('tall').style.height = px + 'px';
+  </script>
+</body>
+</html>
