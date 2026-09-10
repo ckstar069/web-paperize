@@ -11,7 +11,7 @@
 
 import * as cdp from './cdp.js';
 import * as prep from './prepare.js';
-import { paperInches, marginInches, clamp, CSS_PX_PER_INCH } from './util.js';
+import { paperInches, marginInches, computeFitScale, CSS_PX_PER_INCH } from './util.js';
 import { base64ChunksToBytes, base64ToBytes } from './download.js';
 
 export const BASE_CSS = `
@@ -54,7 +54,22 @@ export async function capturePage(tabId, settings, options = {}) {
   const onProgress = options.onProgress || (() => {});
   return cdp.withDebugger(tabId, async () => {
     const startUrl = await inject(tabId, () => location.href);
-    let usedOverride = false;
+    // Tab zoom leaks into printToPDF: a 150% tab lays out at a narrower CSS
+    // viewport and prints a different document (measured 2026-09-10: MDN went
+    // 8 -> 13 pages, GitHub vscode 2 -> 4). Normalise to 100% for the capture
+    // and restore the user's zoom afterwards.
+    let originalZoom = 1;
+    try {
+      originalZoom = (await chrome.tabs.getZoom(tabId)) || 1;
+    } catch {
+      originalZoom = 1;
+    }
+    const zoomNormalised =
+      Number.isFinite(originalZoom) && originalZoom > 0 && originalZoom !== 1;
+    if (zoomNormalised) {
+      await chrome.tabs.setZoom(tabId, 1).catch(() => {});
+      await new Promise((r) => setTimeout(r, 150)); // let the reflow settle
+    }
     try {
       await cdp.send(tabId, 'Page.enable').catch(() => {});
       await cdp.send(tabId, 'Emulation.setEmulatedMedia', {
@@ -85,8 +100,9 @@ export async function capturePage(tabId, settings, options = {}) {
         throw new Error('The page has no measurable content.');
       }
 
-      // Zoom experiment data point (docs/V0.1_SCOPE.md §4): always log, act
-      // only behind the experimental switch until the four runs are measured.
+      // Measurement log (docs/V0.1_SCOPE.md §4 zoom experiments): captures are
+      // normalised to 100% zoom, so this records the original zoom for the
+      // record and the post-normalisation measurements the scale is based on.
       let zoom = 1;
       try {
         zoom = (await chrome.tabs.getZoom(tabId)) || 1;
@@ -97,18 +113,9 @@ export async function capturePage(tabId, settings, options = {}) {
         contentWidth: metrics.width,
         contentHeight: metrics.height,
         viewportWidth: metrics.viewportWidth,
+        originalZoom,
         zoom,
       });
-      if (settings.viewportOverride && Number.isFinite(zoom) && zoom > 0 && zoom !== 1) {
-        await cdp.send(tabId, 'Emulation.setDeviceMetricsOverride', {
-          width: Math.round(metrics.width * zoom),
-          height: Math.max(600, Math.round(metrics.viewportHeight)),
-          deviceScaleFactor: 0,
-          mobile: false,
-        });
-        usedOverride = true;
-        await new Promise((r) => setTimeout(r, 200)); // let the reflow settle
-      }
 
       const orientation =
         settings.orientation === 'auto'
@@ -119,10 +126,7 @@ export async function capturePage(tabId, settings, options = {}) {
       const paper = paperInches({ ...settings, orientation });
       const margin = marginInches(settings);
       const printableWidthPx = Math.max(1, paper.width - margin * 2) * CSS_PX_PER_INCH;
-      let scale = 1;
-      if (settings.fitWidth && metrics.width > printableWidthPx) {
-        scale = clamp(printableWidthPx / metrics.width, 0.1, 1);
-      }
+      const scale = settings.fitWidth ? computeFitScale(metrics.width, printableWidthPx) : 1;
 
       onProgress('Rendering PDF');
       const params = {
@@ -167,10 +171,10 @@ export async function capturePage(tabId, settings, options = {}) {
       } else {
         console.warn('[wpz] page navigated during capture, skipping restore');
       }
-      if (usedOverride) {
-        await cdp.send(tabId, 'Emulation.clearDeviceMetricsOverride').catch(() => {});
-      }
       await cdp.send(tabId, 'Emulation.setEmulatedMedia', { media: '' }).catch(() => {});
+      if (zoomNormalised) {
+        await chrome.tabs.setZoom(tabId, originalZoom).catch(() => {});
+      }
     }
   });
 }

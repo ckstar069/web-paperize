@@ -22,6 +22,16 @@ export function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
+/**
+ * Sheet-level fit scale. A little width headroom on purpose: without it the
+ * scale lands exactly on the content width and any rounding difference or
+ * one-pixel overflow shaves the right edge (seen on a 1600px table).
+ */
+export function computeFitScale(contentWidth, printableWidthPx) {
+  if (!(contentWidth > 0) || contentWidth <= printableWidthPx) return 1;
+  return clamp(printableWidthPx / (contentWidth * 1.02), 0.1, 1);
+}
+
 /** Resolves paper dimensions in inches. `orientation` must already be portrait|landscape. */
 export function paperInches(settings) {
   const key = settings.paper in PAPER_SIZES ? settings.paper : 'a4';

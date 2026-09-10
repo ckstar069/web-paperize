@@ -13,12 +13,12 @@
   ├─ Emulation.setEmulatedMedia({media:'screen', features:[reduced-motion]})
   ├─ prepare：primePage → declutter → expand → applyPrintCss   # 全程记 undo log
   ├─ 量取 contentWidth/contentHeight（三重测量取最大）
-  ├─ [实验开关 viewportOverride，默认关] 记录 zoom（tabs.getZoom）
-  │    是否/如何做 viewport 覆盖，待 V0.1_SCOPE §4 的 zoom 四组实测定稿
+  ├─ zoom 归一化：originalZoom = tabs.getZoom；≠1 则 tabs.setZoom(tabId, 1) 并等待重排
+  │    （2026-09-10 实测：150% 下 MDN 8→13 页、vscode 2→4 页，缩放会泄漏进 printToPDF）
   ├─ 计算 paper/scale/margin（fitWidth：scale=printableWidthPx/contentWidth，clamp[0.1,1]）
   ├─ Page.printToPDF({ transferMode:'ReturnAsStream', … })
   ├─ IO.read 流式读取 → Uint8Array
-  └─ finally：restorePage（逆序 undo）→ media 复位 → clearDeviceMetricsOverride → detach
+  └─ finally：restorePage（逆序 undo）→ media 复位 → 恢复原 zoom → detach
 [download]
   ↓ offscreen document 铸 blob URL（失败兜底 data: URL）
   ↓ chrome.downloads.download({filename:'{title}.pdf'})

@@ -47,7 +47,7 @@
 ### 1.3 视口 / 缩放 / 测量（upstream observation：来自 pdfsnap 注释的实测，web-paperize 尚未独立验证）
 
 1. **打印前必须把 viewport 高度覆盖为完整文档高度**（`Emulation.setDeviceMetricsOverride`）：否则 lazy 图片可能空白、`position: sticky` 元素位置错误。且必须**先设置、后打印**，不能边打边设。
-2. **标签页缩放可能必须参与计算**（upstream observation）：pdfsnap 注释称用户把页面缩放到 150% 时，文档在 CSS 像素下变窄，忽略会导致右侧截断，其做法是用 `chrome.tabs.getZoom(tabId)` 倍率乘到 viewport 尺寸上；page2pdf 的 text 模式未处理此项。⚠️ 该结论未经本项目验证：V0.1 实现阶段用「普通页 / 宽 overflow 页 × 100% / 150% zoom」四组实验实测后，再决定最终 width 策略（实验设计见 V0.1_SCOPE §4）。
+2. **标签页缩放会泄漏进 printToPDF**（2026-09-10 本项目实测确认）：150% 缩放下 MDN 8→13 页、GitHub vscode 2→4 页（PDF 页数证据），整页重排、版式漂移。**定稿策略：不采纳 pdfsnap 的 ×zoom viewport 覆盖乘法方案（记录为参考项目实现），改为捕获前 `chrome.tabs.setZoom(tabId, 1)` 归一化、捕获后恢复原缩放**——产出与 100% 完全一致，实现更直接。
 3. **文档高度要三重测量取最大值**：`scrollHeight`、`documentElement.getBoundingClientRect().bottom + scrollY`、`body` 同式——绝对定位的页脚、展开的菜单会超出滚动区域。
 4. **改变文档高度的操作（declutter、文章模式、宽度覆盖）必须发生在测量之前**，否则纸过高、尾部留白。
 5. 单张纸高度上限（upstream observation）：pdfsnap 称 **800 英寸（≈76800 CSS px）** 以上 Chromium 静默失败；page2pdf 自用常量为 200 英寸；screen-to-pdf 二分上界 1000 英寸。三者不一致、均未经本项目验证；V0.1 只做分页不做单张长页，暂以 200 英寸作为未来实现的保守假设。

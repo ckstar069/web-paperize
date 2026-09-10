@@ -13,8 +13,6 @@ export const DEFAULTS = {
   declutter: true,
   expandScrollers: true,
   filenameTemplate: '{title}',
-  /** Experimental (docs/V0.1_SCOPE.md §4 zoom experiments); off until measured. */
-  viewportOverride: false,
 };
 
 const cache = { defaults: null };

@@ -7,9 +7,19 @@ import {
   paperInches,
   marginInches,
   clamp,
+  computeFitScale,
   sanitizeFilename,
   buildFilename,
 } from '../../src/background/util.js';
+
+test('computeFitScale keeps narrow content at 1 and shrinks wide content with headroom', () => {
+  assert.equal(computeFitScale(800, 1000), 1);
+  assert.equal(computeFitScale(0, 1000), 1);
+  const scale = computeFitScale(1762, 755);
+  assert.ok(scale < 755 / 1762, 'must include width headroom');
+  assert.ok(scale >= 0.1 && scale <= 1);
+  assert.equal(computeFitScale(100000, 755), 0.1); // clamped floor
+});
 
 test('paperInches resolves a4 portrait and landscape', () => {
   const a4 = paperInches({ paper: 'a4', orientation: 'portrait' });
