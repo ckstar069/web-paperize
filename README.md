@@ -24,7 +24,7 @@
 
 ## 状态
 
-V0.1 已实现，可 `Load unpacked` 使用；验证基准与真实网站 A/B benchmark 进行中（见 [docs/V0.1_SCOPE.md](docs/V0.1_SCOPE.md) §4）。
+V0.1 已实现并通过首批基准（2026-09-10：本地夹具、真实网站矩阵、zoom 实验，见 [docs/benchmark/2026-09-10/README.md](docs/benchmark/2026-09-10/README.md)）。
 
 - [docs/REFERENCE_IMPLEMENTATION_ASSESSMENT.md](docs/REFERENCE_IMPLEMENTATION_ASSESSMENT.md) — 四个参考项目的逐能力评估与代码血缘台账
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — V0.1 架构（模块契约、数据流、权限模型）
