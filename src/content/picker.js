@@ -39,6 +39,10 @@
       if (!inlineish && !tiny) return node;
       node = node.parentElement;
     }
+    // The climb ran out of qualifying blocks and reached the page root: the
+    // root (body / app shell) is never a useful pick — fall back to the
+    // element the cursor is actually on.
+    if (node === document.body || node === document.documentElement) return el;
     return node || el;
   }
 
@@ -65,12 +69,6 @@
       if (fallback === null) fallback = el;
       const tag = el.tagName;
       if (tag === 'IMG' || tag === 'CANVAS' || tag === 'VIDEO' || tag === 'SVG') return el;
-      // A viewport-covering fixed/absolute element with hardly any text is a
-      // shell/backdrop, not the content the user is pointing at.
-      if ((cs.position === 'fixed' || cs.position === 'absolute') && (el.innerText || '').trim().length < 200) {
-        const r = el.getBoundingClientRect();
-        if (r.width >= window.innerWidth * 0.85 && r.height >= window.innerHeight * 0.85) continue;
-      }
       if ((el.innerText || '').trim()) return el;
     }
     return fallback;
@@ -120,6 +118,14 @@
 
   let lastX = -99;
   let lastY = -99;
+  // True after the user widened the pick with ↑ (or narrowed with ↓): the
+  // deliberate pick then stays put while the cursor moves WITHIN it, so the
+  // outline does not collapse back to the deep hover target. Any hover that
+  // lands on an unrelated block releases the pin. Without this flag the
+  // contains() check below used to lock the outline onto the first hovered
+  // ancestor (on GitHub: the page-wide layout root, 1850×2976) and the picker
+  // could then only ever select "the whole page".
+  let pinned = false;
 
   function onMouseMove(ev) {
     if (!active) return;
@@ -134,7 +140,8 @@
     }
     lastDeep = el;
     const block = blockFor(el);
-    if (current && (block === current || current.contains(block))) return; // keep the wider pick stable
+    if (pinned && current && (block === current || current.contains(block))) return;
+    pinned = false;
     outline(block);
   }
 
@@ -146,7 +153,10 @@
     } else if (ev.key === 'ArrowUp' && current && current.parentElement) {
       ev.preventDefault();
       const parent = current.parentElement;
-      if (parent !== document.body && parent !== document.documentElement) outline(parent);
+      if (parent !== document.body && parent !== document.documentElement) {
+        pinned = true;
+        outline(parent);
+      }
     } else if (ev.key === 'ArrowDown' && current) {
       ev.preventDefault();
       // Descend towards whatever the cursor is actually over, not just the
@@ -158,7 +168,10 @@
       }
       if (node && node.parentElement === current && node !== current) child = node;
       if (!child) child = current.firstElementChild;
-      if (child && child instanceof HTMLElement) outline(child);
+      if (child && child instanceof HTMLElement) {
+        pinned = true;
+        outline(child);
+      }
     }
   }
 
