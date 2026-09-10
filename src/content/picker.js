@@ -46,25 +46,34 @@
 
   /**
    * Picks the element to outline from everything under the cursor. A plain
-   * elementFromPoint is not enough: sites plant transparent page-wide overlays
-   * (portals, backdrops) that swallow every hit — on one GitHub page the
-   * picker could therefore only ever select "the whole page" (1865px wide).
+   * elementFromPoint is not enough: sites plant transparent page-wide shells
+   * (portals, backdrops, a11y live regions) that swallow every hit — on one
+   * GitHub page the picker could therefore only ever select "the whole page".
    * elementsFromPoint returns the full stack, so walk it and take the first
-   * candidate that actually carries content or is itself media, skipping the
-   * empty overlay shells on top.
+   * candidate that actually carries VISIBLE content or is itself media.
+   * innerText, not textContent: hidden (display:none / aria-only) text must
+   * not qualify a shell as content.
    */
   function contentAt(x, y) {
     const stack = document.elementsFromPoint(x, y);
+    let fallback = null;
     for (const el of stack) {
       if (!(el instanceof HTMLElement) && !(el instanceof SVGElement)) continue;
       if (ownUi(el) || el === document.documentElement || el === document.body) continue;
       const cs = getComputedStyle(el);
-      if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+      if (cs.visibility === 'hidden' || cs.display === 'none' || cs.opacity === '0') continue;
+      if (fallback === null) fallback = el;
       const tag = el.tagName;
       if (tag === 'IMG' || tag === 'CANVAS' || tag === 'VIDEO' || tag === 'SVG') return el;
-      if ((el.textContent || '').trim()) return el;
+      // A viewport-covering fixed/absolute element with hardly any text is a
+      // shell/backdrop, not the content the user is pointing at.
+      if ((cs.position === 'fixed' || cs.position === 'absolute') && (el.innerText || '').trim().length < 200) {
+        const r = el.getBoundingClientRect();
+        if (r.width >= window.innerWidth * 0.85 && r.height >= window.innerHeight * 0.85) continue;
+      }
+      if ((el.innerText || '').trim()) return el;
     }
-    return null;
+    return fallback;
   }
 
   function makeUi() {
@@ -109,8 +118,15 @@
     tag.textContent = `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''} · ${Math.round(r.width)}×${Math.round(r.height)}`;
   }
 
+  let lastX = -99;
+  let lastY = -99;
+
   function onMouseMove(ev) {
     if (!active) return;
+    // innerText probing is not free; skip sub-pixel jitter.
+    if (Math.abs(ev.clientX - lastX) < 4 && Math.abs(ev.clientY - lastY) < 4) return;
+    lastX = ev.clientX;
+    lastY = ev.clientY;
     const el = contentAt(ev.clientX, ev.clientY);
     if (!el) {
       outline(null);
