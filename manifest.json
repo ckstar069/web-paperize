@@ -10,7 +10,8 @@
     "downloads",
     "storage",
     "offscreen",
-    "debugger"
+    "debugger",
+    "contextMenus"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js",

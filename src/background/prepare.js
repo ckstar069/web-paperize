@@ -297,6 +297,131 @@ export function applyPrintCss(css) {
   return true;
 }
 
+/** Re-measures the isolated target once the layout has settled. */
+export function measureTarget() {
+  const store = window.__wpz__;
+  const target = store && store.pickedElement;
+  if (!target || !target.isConnected) return null;
+  const rect = target.getBoundingClientRect();
+  return {
+    x: Math.max(0, rect.left + window.scrollX),
+    y: Math.max(0, rect.top + window.scrollY),
+    width: Math.max(1, rect.width),
+    height: Math.max(1, rect.height),
+  };
+}
+
+/**
+ * Isolates the picked element (set by the picker or selection holder) so the
+ * PDF contains only that region. Rather than resetting the element's own
+ * styles — which would wreck its layout — this hides everything alongside the
+ * ancestor chain and unclips the path down to the target. The element keeps
+ * every rule the page gave it.
+ */
+export function isolateElement() {
+  const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
+  const record =
+    store.record ||
+    ((el, prop, isAttr) => {
+      store.undo.push({
+        el,
+        prop,
+        isAttr: Boolean(isAttr),
+        prev: isAttr ? el.getAttribute(prop) : el.style.getPropertyValue(prop),
+        priority: isAttr ? '' : el.style.getPropertyPriority(prop),
+      });
+    });
+  store.record = record;
+  const target = store.pickedElement;
+  if (!target || !target.isConnected) return null;
+
+  const setProp = (el, prop, value) => {
+    record(el, prop);
+    el.style.setProperty(prop, value, 'important');
+  };
+
+  let node = target;
+  while (node && node.parentElement) {
+    const parent = node.parentElement;
+    for (const sibling of parent.children) {
+      if (sibling === node) continue;
+      if (!(sibling instanceof HTMLElement) && !(sibling instanceof SVGElement)) continue;
+      if (sibling.tagName === 'STYLE' || sibling.tagName === 'LINK' || sibling.tagName === 'SCRIPT') continue;
+      setProp(sibling, 'display', 'none');
+    }
+    // Unclip and unpad the path so the target sits flush at the top left.
+    setProp(parent, 'overflow-x', 'visible');
+    setProp(parent, 'overflow-y', 'visible');
+    setProp(parent, 'max-height', 'none');
+    setProp(parent, 'height', 'auto');
+    if (parent !== document.body && parent !== document.documentElement) {
+      setProp(parent, 'padding', '0');
+      setProp(parent, 'margin', '0');
+      setProp(parent, 'border', '0');
+      setProp(parent, 'width', 'auto');
+    }
+    node = parent;
+    if (parent === document.documentElement) break;
+  }
+
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    setProp(el, 'margin', '0');
+    setProp(el, 'padding', '0');
+    setProp(el, 'background', '#ffffff');
+    setProp(el, 'height', 'auto');
+    setProp(el, 'min-height', '0');
+    setProp(el, 'overflow-x', 'visible');
+    setProp(el, 'overflow-y', 'visible');
+  }
+  setProp(target, 'margin', '0');
+
+  // Shrink the document to the target so the sheet is not mostly blank.
+  const first = target.getBoundingClientRect();
+  if (first.width > 40) {
+    const width = `${Math.ceil(first.width)}px`;
+    for (const el of [document.documentElement, document.body]) {
+      if (!el) continue;
+      setProp(el, 'width', width);
+      setProp(el, 'min-width', '0');
+      setProp(el, 'max-width', 'none');
+    }
+  }
+
+  // Force a reflow so the measurement below is the settled one.
+  void document.documentElement.offsetHeight;
+  const rect = target.getBoundingClientRect();
+  return {
+    x: rect.left + window.scrollX,
+    y: rect.top + window.scrollY,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+/** Lifts the current selection into a standalone block, then isolates it. */
+export function isolateSelection() {
+  const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+
+  const holder = document.createElement('div');
+  holder.setAttribute('data-wpz-holder', '');
+  holder.style.cssText = 'padding:0;margin:0;background:#fff;';
+  for (let i = 0; i < selection.rangeCount; i += 1) {
+    holder.appendChild(selection.getRangeAt(i).cloneContents());
+  }
+  // Anchor it inside the original container so inherited styling still applies.
+  const anchor = selection.getRangeAt(0).commonAncestorContainer;
+  const host = (anchor.nodeType === 1 ? anchor : anchor.parentElement) || document.body;
+  host.appendChild(holder);
+
+  store.injected.push(holder);
+  store.pickedElement = holder;
+  selection.removeAllRanges();
+  return true;
+}
+
 /** Reverts every mutation journalled by the functions above. */
 export function restorePage() {
   const store = window.__wpz__;

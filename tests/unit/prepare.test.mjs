@@ -14,6 +14,9 @@ const INJECTED = [
   'declutterPage',
   'expandContent',
   'applyPrintCss',
+  'measureTarget',
+  'isolateElement',
+  'isolateSelection',
   'restorePage',
 ];
 

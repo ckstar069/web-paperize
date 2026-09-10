@@ -16,6 +16,8 @@ export const DEFAULTS = {
   declutter: true,
   expandScrollers: true,
   filenameTemplate: '{title}',
+  /** One tall continuous sheet instead of paginating (capped, see util). */
+  singlePage: false,
 };
 
 const cache = { defaults: null };

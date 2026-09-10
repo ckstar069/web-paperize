@@ -1,17 +1,23 @@
 /**
- * The capture engine for V0.1: one path, one goal — the PDF looks like the
- * tab. Page.printToPDF runs while the page is emulated as screen media, so
- * the layout stays the one on screen, yet the output is real vector text
- * with selectable characters and live links.
+ * The capture engine: one path, one goal — the PDF looks like the tab.
+ * Page.printToPDF runs while the page is emulated as screen media, so the
+ * layout stays the one on screen, yet the output is real vector text with
+ * selectable characters and live links.
  *
  * Ordering constraint (audit §1.3/§1.4, upstream observation): height-changing
- * preparation finishes BEFORE measuring, and (if the experimental viewport
- * override is on) the override is set BEFORE printing.
+ * preparation finishes BEFORE measuring, and the experimental viewport walk
+ * (horizontal overflow only) also precedes the fit-scale computation.
  */
 
 import * as cdp from './cdp.js';
 import * as prep from './prepare.js';
-import { paperInches, marginInches, computeFitScale, CSS_PX_PER_INCH } from './util.js';
+import {
+  paperInches,
+  marginInches,
+  computeFitScale,
+  continuousPaperHeight,
+  CSS_PX_PER_INCH,
+} from './util.js';
 import { base64ChunksToBytes, base64ToBytes } from './download.js';
 
 export const BASE_CSS = `
@@ -32,6 +38,22 @@ export const BREAK_CSS = `
   thead { display: table-header-group !important; }
 `;
 
+/**
+ * Single-sheet mode is the opposite of pagination: any forced break — ours or
+ * the site's — could push content onto a phantom second page even when
+ * paperHeight was computed exactly, so all break properties reset to auto.
+ */
+export const NO_BREAK_CSS = `
+  * {
+    break-before: auto !important;
+    break-after: auto !important;
+    break-inside: auto !important;
+    page-break-before: auto !important;
+    page-break-after: auto !important;
+    page-break-inside: auto !important;
+  }
+`;
+
 async function inject(tabId, func, args = []) {
   const [result] = await chrome.scripting.executeScript({
     target: { tabId },
@@ -48,10 +70,12 @@ async function inject(tabId, func, args = []) {
  * @param {number} tabId
  * @param {Object} settings Effective settings for this capture.
  * @param {Object} [options]
+ * @param {'page'|'element'|'selection'} [options.scope]
  * @param {Function} [options.onProgress] (text, progress?)
  */
 export async function capturePage(tabId, settings, options = {}) {
   const onProgress = options.onProgress || (() => {});
+  const scope = options.scope || 'page';
   return cdp.withDebugger(tabId, async () => {
     const startUrl = await inject(tabId, () => location.href);
     // Tab zoom leaks into printToPDF (measured 2026-09-10: MDN 8 -> 13 pages,
@@ -108,7 +132,30 @@ export async function capturePage(tabId, settings, options = {}) {
       if (settings.expandScrollers !== false) {
         await inject(tabId, prep.expandContent);
       }
-      await inject(tabId, prep.applyPrintCss, [BASE_CSS + (settings.avoidBreaks ? BREAK_CSS : '')]);
+
+      // Element/selection sheets are single sheets by definition; a continuous
+      // page asks for one. Either way pagination-friendly CSS must NOT apply.
+      const elementScope = scope === 'element' || scope === 'selection';
+      const singleSheet = elementScope || Boolean(settings.singlePage);
+      await inject(tabId, prep.applyPrintCss, [
+        BASE_CSS + (singleSheet ? NO_BREAK_CSS : settings.avoidBreaks ? BREAK_CSS : ''),
+      ]);
+
+      let region = null;
+      if (scope === 'selection') {
+        onProgress('Isolating the selection');
+        const ok = await inject(tabId, prep.isolateSelection);
+        if (!ok) throw new Error('Select some text on the page first, then export.');
+      }
+      if (elementScope) {
+        onProgress('Isolating the picked region');
+        region = await inject(tabId, prep.isolateElement);
+        if (!region) throw new Error('Nothing was picked to export. Try the picker again.');
+        // Isolation reflows the document, so settle and measure the target again.
+        await new Promise((r) => setTimeout(r, 150));
+        region = await inject(tabId, prep.measureTarget);
+        if (!region) throw new Error('The picked region disappeared before it could be exported.');
+      }
 
       onProgress('Measuring');
       let metrics = await inject(tabId, prep.measurePage);
@@ -121,7 +168,7 @@ export async function capturePage(tabId, settings, options = {}) {
       // every step). A single measurement under-shoots that fixed point, so
       // the table still fell off the sheet even with scale headroom. Walk the
       // viewport out until the document stops growing, then fit-shrink THAT.
-      if (settings.fitWidth && metrics.width > metrics.viewportWidth * 1.02) {
+      if (settings.fitWidth && !elementScope && metrics.width > metrics.viewportWidth * 1.02) {
         let width = metrics.width;
         for (let i = 0; i < 8; i += 1) {
           await cdp
@@ -152,6 +199,7 @@ export async function capturePage(tabId, settings, options = {}) {
         zoom = 1;
       }
       console.log('[wpz] measure', {
+        scope,
         contentWidth: metrics.width,
         contentHeight: metrics.height,
         viewportWidth: metrics.viewportWidth,
@@ -159,24 +207,47 @@ export async function capturePage(tabId, settings, options = {}) {
         zoom,
       });
 
+      // ── Sheet plan ────────────────────────────────────────────────
+      const contentWidth = region ? region.width : metrics.width;
+      const contentHeight = region ? region.height : metrics.height;
       const orientation =
-        settings.orientation === 'auto'
+        !singleSheet && settings.orientation === 'auto'
           ? metrics.width > metrics.height && metrics.width > 960
             ? 'landscape'
             : 'portrait'
-          : settings.orientation;
-      const paper = paperInches({ ...settings, orientation });
+          : singleSheet
+            ? 'portrait'
+            : settings.orientation;
+      // Element/selection sheets are cut to the content; continuous pages keep
+      // the user's paper width.
+      const effective = elementScope
+        ? { ...settings, paper: 'fit', orientation: 'portrait' }
+        : { ...settings, orientation };
+      const paper = paperInches(effective, contentWidth);
       const margin = marginInches(settings);
       const printableWidthPx = Math.max(1, paper.width - margin * 2) * CSS_PX_PER_INCH;
-      const scale = settings.fitWidth ? computeFitScale(metrics.width, printableWidthPx) : 1;
+      const scale = settings.fitWidth !== false ? computeFitScale(contentWidth, printableWidthPx) : 1;
 
-      onProgress('Rendering PDF');
+      let paperHeight = paper.height;
+      let oneSheet = false;
+      if (singleSheet) {
+        const heightIn = continuousPaperHeight(contentHeight, scale, margin);
+        if (heightIn) {
+          paperHeight = heightIn;
+          oneSheet = true;
+        } else {
+          // Above the product-safe cap: fall back to pagination, say so.
+          onProgress('Content is too tall for one sheet — paginating instead');
+        }
+      }
+
+      onProgress(oneSheet ? 'Rendering one continuous page' : 'Rendering PDF');
       const params = {
         landscape: orientation === 'landscape',
         printBackground: settings.printBackground !== false,
         scale: Number(scale.toFixed(4)),
         paperWidth: paper.width,
-        paperHeight: paper.height,
+        paperHeight,
         marginTop: margin,
         marginBottom: margin,
         marginLeft: margin,
@@ -204,7 +275,10 @@ export async function capturePage(tabId, settings, options = {}) {
       const bytes = result.stream
         ? base64ChunksToBytes(await cdp.readStream(tabId, result.stream))
         : base64ToBytes(result.data);
-      return { bytes, metrics: { ...metrics, zoom, orientation, scale } };
+      return {
+        bytes,
+        metrics: { ...metrics, zoom, orientation, scale, scope, oneSheet },
+      };
     } finally {
       // Navigation during the capture destroys the isolated world (and with it
       // the undo log); restoring into a different document would be wrong.

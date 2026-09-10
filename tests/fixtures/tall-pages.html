@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>连续长页夹具 — 单页高度档位</title>
+<!--
+  V0.2 连续长页夹具（docs/V0.2_PLAN.md §6）。按 URL 参数决定总高度：
+  ?in=150 → 150in（14400px，产品上限内，应导出为单张连续页）
+  ?in=250 → 250in（24000px，超 200in 产品上限，应自动回退 A4 分页）
+-->
+<style>
+  body { margin: 0; font: 16px/1.7 -apple-system, 'PingFang SC', sans-serif; }
+  .band { padding: 10px 16px; border-bottom: 1px solid #d1d5db; }
+  .band:nth-child(odd) { background: #f5f6fa; }
+</style>
+</head>
+<body>
+  <div id="wrap"></div>
+  <script>
+    const inches = Number(new URLSearchParams(location.search).get('in') || 150);
+    const totalPx = Math.round(inches * 96);
+    const bandH = 96;
+    const count = Math.floor(totalPx / bandH);
+    const wrap = document.getElementById('wrap');
+    const frag = document.createDocumentFragment();
+    for (let i = 1; i <= count; i += 1) {
+      const d = document.createElement('div');
+      d.className = 'band';
+      d.style.height = (bandH - 20) + 'px';
+      d.textContent = `band ${i} / ${count} · 高度档位 ${inches}in`;
+      frag.appendChild(d);
+    }
+    wrap.appendChild(frag);
+  </script>
+</body>
+</html>

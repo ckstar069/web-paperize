@@ -9,9 +9,10 @@ Copyright (c) 2026 Guillermo Sotelo · <https://github.com/guillesotelo/page2pdf
 
 使用方式：`src/background/cdp.js`（引用计数 attach、withDebugger、CdpError、
 readStream、失败原因翻译）与 undo-log 页面预处理管线、offscreen blob URL 下载方案、
-分页友好 CSS 规则的结构与控制流均借鉴自该项目并重写；源码内已标注
-"design informed by page2pdf"。因结构级相似构成 substantial reuse，以下保留其完整
-MIT 许可声明：
+分页友好 CSS 规则、V0.2 元素选取器/isolateElement/isolateSelection 结构
+（`src/content/picker.js`、`src/background/prepare.js` 新增函数）均借鉴自该项目并
+重写；源码内已标注 "design informed by page2pdf"。因结构级相似构成 substantial
+reuse，以下保留其完整 MIT 许可声明：
 
 > MIT License
 >

@@ -49,8 +49,10 @@ async function init() {
     $('paper').value = s.paper;
     $('orientation').value = s.orientation;
     $('margin').value = s.margin;
+    $('singlePage').checked = Boolean(s.singlePage);
     if (response.tab && !response.tab.capturable) {
       save.disabled = true;
+      $('pick').disabled = true;
       showStatus('This page cannot be exported (browser-internal or store pages).', 'error');
       return;
     }
@@ -67,6 +69,19 @@ document.querySelectorAll('select').forEach((el) => {
   el.addEventListener('change', () => {
     send({ action: 'setDefaults', patch: { [el.id]: el.value } }).catch(() => {});
   });
+});
+
+$('singlePage').addEventListener('change', () => {
+  send({ action: 'setDefaults', patch: { singlePage: $('singlePage').checked } }).catch(() => {});
+});
+
+$('pick').addEventListener('click', async () => {
+  try {
+    await send({ action: 'pick' });
+    window.close(); // picker needs the page visible; popup would cover it
+  } catch (error) {
+    showStatus(error && error.message ? error.message : 'Could not start the picker.', 'error');
+  }
 });
 
 save.addEventListener('click', async () => {

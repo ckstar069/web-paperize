@@ -4,13 +4,36 @@ import assert from 'node:assert/strict';
 import {
   PAPER_SIZES,
   MARGIN_PRESETS,
+  MAX_CONTINUOUS_INCHES,
   paperInches,
   marginInches,
+  continuousPaperHeight,
   clamp,
   computeFitScale,
   sanitizeFilename,
   buildFilename,
 } from '../../src/background/util.js';
+
+test('product-safe continuous cap stays at the PDF default user space limit', () => {
+  assert.equal(MAX_CONTINUOUS_INCHES, 200);
+});
+
+test('continuousPaperHeight fits tall content and caps over-limit content', () => {
+  const fits = continuousPaperHeight(12000, 1, 0.4);
+  assert.ok(fits > 0 && fits <= MAX_CONTINUOUS_INCHES);
+  // 250in of content exceeds the 200in cap -> null (caller paginates).
+  assert.equal(continuousPaperHeight(250 * 96, 1, 0.4), null);
+  // Scale shrinks the content, so a wide-but-short page still fits one sheet.
+  assert.ok(continuousPaperHeight(250 * 96, 0.5, 0.4) !== null);
+});
+
+test('paperInches cuts a fit sheet to the content width', () => {
+  const fit = paperInches({ paper: 'fit', orientation: 'portrait' }, 1280);
+  assert.ok(Math.abs(fit.width - 1280 / 96) < 0.01);
+  assert.ok(fit.height > fit.width);
+  const min = paperInches({ paper: 'fit', orientation: 'portrait' }, 100);
+  assert.equal(min.width, 3);
+});
 
 test('computeFitScale keeps narrow content at 1 and shrinks wide content with headroom', () => {
   assert.equal(computeFitScale(800, 1000), 1);

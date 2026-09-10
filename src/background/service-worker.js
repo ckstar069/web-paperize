@@ -39,7 +39,7 @@ function toPopup(payload) {
   chrome.runtime.sendMessage({ target: 'popup', ...payload }).catch(() => {});
 }
 
-async function runCapture(tab, { overrides = null } = {}) {
+async function runCapture(tab, { scope = 'page', overrides = null } = {}) {
   if (!tab || !tab.id) throw new Error('No tab to export.');
   if (!capturable(tab.url)) {
     throw new Error('This page cannot be exported. Open a normal web page and try again.');
@@ -47,11 +47,13 @@ async function runCapture(tab, { overrides = null } = {}) {
   if (busyTabs.has(tab.id)) throw new Error('This tab is already being exported.');
 
   busyTabs.add(tab.id);
-  detachedExternally.delete(tab.id);  const settings = { ...(await getDefaults()), ...(overrides || {}) };
+  detachedExternally.delete(tab.id);
+  const settings = { ...(await getDefaults()), ...(overrides || {}) };
   setBadge('...');
 
   try {
     const { bytes, metrics } = await capturePage(tab.id, settings, {
+      scope,
       onProgress: (text, progress) => toPopup({ action: 'progress', text, progress }),
     });
     const filename = buildFilename(settings.filenameTemplate, metrics);
@@ -83,6 +85,17 @@ async function runCapture(tab, { overrides = null } = {}) {
   }
 }
 
+async function startPicker(tab) {
+  if (!tab || !capturable(tab.url)) {
+    throw new Error('The picker cannot run on this page.');
+  }
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    files: ['src/content/picker.js'],
+  });
+  return true;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target === 'offscreen' || message.target === 'popup') return false;
 
@@ -109,7 +122,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // The popup can see the URL via activeTab even when a re-query here
           // cannot; trust it as a fallback.
           if (tab && !tab.url && message.url) tab = { ...tab, url: message.url };
-          const result = await runCapture(tab, { overrides: message.overrides || null });
+          const result = await runCapture(tab, {
+            scope: message.scope || 'page',
+            overrides: message.overrides || null,
+          });
+          sendResponse({ ok: true, result });
+          break;
+        }
+        case 'pick': {
+          const tab = await activeTab();
+          await startPicker(tab);
+          sendResponse({ ok: true });
+          break;
+        }
+        case 'capturePicked': {
+          const tab = sender.tab || (await activeTab());
+          const result = await runCapture(tab, { scope: 'element' });
           sendResponse({ ok: true, result });
           break;
         }
@@ -126,6 +154,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   })();
 
   return true;
+});
+
+const MENUS = [
+  { id: 'wpz-page', title: 'Save this page as PDF', contexts: ['page', 'frame'] },
+  { id: 'wpz-selection', title: 'Save selection as PDF', contexts: ['selection'] },
+  { id: 'wpz-element', title: 'Pick an element to save…', contexts: ['page'] },
+];
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    for (const menu of MENUS) chrome.contextMenus.create(menu);
+  });
+});
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  try {
+    if (!tab) return;
+    if (info.menuItemId === 'wpz-element') return void startPicker(tab);
+    if (info.menuItemId === 'wpz-selection') return void runCapture(tab, { scope: 'selection' });
+    await runCapture(tab, { scope: 'page' });
+  } catch {
+    /* surfaced through the badge and the popup already */
+  }
 });
 
 chrome.debugger.onDetach.addListener((source) => {

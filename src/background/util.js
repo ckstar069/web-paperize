@@ -6,7 +6,18 @@
 export const PAPER_SIZES = {
   a4: { label: 'A4', width: 8.27, height: 11.69 },
   letter: { label: 'Letter', width: 8.5, height: 11.0 },
+  // Sheet cut to the content itself (element/selection exports).
+  fit: { label: 'Fit', width: 0, height: 0 },
 };
+
+/**
+ * Product-safe cap for single continuous pages, in inches. Chrome happily
+ * renders sheets up to ~910in (renderer candidate limit, see
+ * docs/benchmark/2026-09-10-height-limit.md) but emits no /UserUnit, so
+ * anything above 200in — the PDF default user space recommendation — is out
+ * of spec and unverified on Windows viewers. Raise only with broader testing.
+ */
+export const MAX_CONTINUOUS_INCHES = 200;
 
 export const MARGIN_PRESETS = {
   none: { label: 'None', value: 0 },
@@ -33,13 +44,31 @@ export function computeFitScale(contentWidth, printableWidthPx) {
 }
 
 /** Resolves paper dimensions in inches. `orientation` must already be portrait|landscape. */
-export function paperInches(settings) {
+export function paperInches(settings, contentWidthPx = 0) {
   const key = settings.paper in PAPER_SIZES ? settings.paper : 'a4';
-  const size = PAPER_SIZES[key];
-  if (settings.orientation === 'landscape') {
-    return { width: size.height, height: size.width };
+  let width;
+  let height;
+  if (key === 'fit') {
+    // Paper as wide as the content itself, at the CSS reference of 96 dpi.
+    width = Math.max(3, (contentWidthPx || 1280) / CSS_PX_PER_INCH);
+    height = width * 1.4142;
+  } else {
+    width = PAPER_SIZES[key].width;
+    height = PAPER_SIZES[key].height;
   }
-  return { width: size.width, height: size.height };
+  if (settings.orientation === 'landscape') {
+    return { width: height, height: width };
+  }
+  return { width, height };
+}
+
+/**
+ * Height of a single continuous sheet for the given content, or null when the
+ * content would exceed the product-safe cap (caller falls back to pagination).
+ */
+export function continuousPaperHeight(contentHeightPx, scale, marginIn) {
+  const heightIn = (contentHeightPx * scale) / CSS_PX_PER_INCH + marginIn * 2 + 0.05;
+  return heightIn <= MAX_CONTINUOUS_INCHES ? heightIn : null;
 }
 
 export function marginInches(settings) {

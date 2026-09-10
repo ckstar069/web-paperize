@@ -54,6 +54,33 @@ button.primary:not(:disabled):hover {
   background: #4338ca;
 }
 
+.row.check {
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 2px 0 8px;
+  cursor: pointer;
+}
+
+.row.check input {
+  flex: none;
+}
+
+button.secondary {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: 500 12px/1 inherit;
+  cursor: pointer;
+}
+
+button.secondary:not(:disabled):hover {
+  background: rgba(128, 128, 128, 0.12);
+}
+
 .progress {
   margin-top: 12px;
 }

@@ -32,6 +32,11 @@
       </select>
     </label>
 
+    <label class="row check">
+      <input type="checkbox" id="singlePage">
+      <span>One continuous page</span>
+    </label>
+
     <div class="progress" id="progress" hidden>
       <div class="bar"><div class="fill" id="fill"></div></div>
       <div class="text" id="progressText"></div>
@@ -39,6 +44,7 @@
     <div class="status" id="status" hidden></div>
 
     <button id="save" class="primary">Save as PDF</button>
+    <button id="pick" class="secondary">Pick an element…</button>
   </main>
   <footer>Page content and generated PDFs never leave your machine.</footer>
   <script type="module" src="popup.js"></script>
