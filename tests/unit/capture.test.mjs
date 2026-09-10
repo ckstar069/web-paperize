@@ -14,6 +14,10 @@ test('print CSS keeps exact colors and stills animations', () => {
   assert.match(BASE_CSS, /animation-play-state:\s*paused/);
 });
 
+test('print CSS neutralises content-visibility (Chromium print skip bug)', () => {
+  assert.match(BASE_CSS, /content-visibility:\s*visible/);
+});
+
 test('break CSS protects blocks and repeats table headers', () => {
   assert.match(BREAK_CSS, /break-inside:\s*avoid/);
   assert.match(BREAK_CSS, /table-header-group/);

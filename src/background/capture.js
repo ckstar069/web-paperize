@@ -24,6 +24,11 @@ import { base64ChunksToBytes, base64ToBytes } from './download.js';
 
 export const BASE_CSS = `
   * { animation-play-state: paused !important; transition: none !important; }
+  /* Chromium's print pipeline skips content-visibility:auto subtrees even when
+     they are visible on screen (seen on GitHub's sidebar: the About heading and
+     description exist in the DOM, render on screen, and vanish from the PDF).
+     Printing must render everything, so neutralise the lazy-rendering hint. */
+  * { content-visibility: visible !important; }
   html { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   ::-webkit-scrollbar { display: none !important; }
   html, body { scrollbar-width: none !important; }
