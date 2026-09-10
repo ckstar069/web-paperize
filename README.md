@@ -17,7 +17,7 @@
   ↓ Emulation.setEmulatedMedia("screen")   ← 强制 screen CSS，绕过 @media print
   ↓ Page.printToPDF
   ↓ chrome.downloads 保存
-  ↓ restorePage（完整恢复导出前的页面状态）
+  ↓ restorePage（恢复插件主动施加的页面修改）
 ```
 
 纯本地处理，无服务器、无遥测。
@@ -48,7 +48,7 @@ V0.1 已实现并通过首批基准（2026-09-10：本地夹具、真实网站�
 | [mozilla/readability](https://github.com/mozilla/readability) | Apache-2.0 | Article Mode（后期） |
 | [gildas-lormeau/SingleFile](https://github.com/gildas-lormeau/singlefile) | AGPL | 仅思路参考，不引入代码 |
 
-验收标准：与 Page to PDF 做 A/B benchmark——内容完整、无重复 sticky header、内部滚动不截断、中文字体正常、文字可选可搜、链接可点、导出后页面完全恢复。
+验收标准：与 Page to PDF 做 A/B benchmark——内容完整、无重复 sticky header、内部滚动不截断、中文字体正常、文字可选可搜、链接可点、导出后插件主动施加的页面修改全部恢复。
 
 ## License
 

@@ -32,8 +32,36 @@ zoom 四组实验 + 真实网站矩阵第一轮。原始 PDF 为 ZCode 会话附
 sticky 只出现一次、cookie 遮罩移除、details 展开、内部滚动展开、lazy 图片加载、
 宽表格完整、宽代码换行、中文/背景/链接正常、导出后页面恢复。
 
-**V0.1 首批基准节点收口（2026-09-10）**：本地夹具 ✓、真实网站矩阵 ✓（ChatGPT 为已
-知限制）、zoom 四组 ✓（100%/150% 输出一致）。待 ChatGPT GitHub 集中审核。
+**V0.1 首批基准节点收口（2026-09-10）**：本地夹具 ✓；**普通网页矩阵 ✓**（MDN/GitHub/中文长文/维基）；zoom 四组 ✓（100%/150% 输出一致）。ChatGPT 属虚拟化/窗口化 DOM 页面，为 V0.1 不支持类别（V0.1_SCOPE §5），不计入通过判定。GitHub 集中审核已通过（2026-09-10）。
+
+## V0.1 hardening（审核后，2026-09-10）
+
+GitHub 集中审核通过后按工作单执行一轮 hardening（8 项）：zoom 归一化改临时 per-tab
+作用域（修复 per-origin 副作用）且失败不静默；print style 所有权改节点引用（不再以
+DOM id 认领）；长列表 Y 轴保护不被横向展开旁路；printToPDF 仅在参数不兼容错误时重试；
+settings 改 storage.local；harness 路径/lazy 选择器/注释修正；三份文档同步到代码现状
+（虚拟化 DOM 正式划出范围）；THIRD_PARTY_NOTICES 纳入 page2pdf 完整 MIT notice。
+浏览器 harness 复验：decoy style 存活、Y 保护生效、宽度往返一致（17 项单测全过）。
+
+**待人工验证**（H1 附带要求）：同 origin 双标签页——A 设 150% 导出期间与之后，
+B 标签页缩放应始终为 150% 不变。
+
+## 测试环境
+
+| 项 | 值 |
+| --- | --- |
+| OS | macOS（Apple Silicon，darwin 25.6.0） |
+| Chrome | 版本待补（测试者可于 chrome://version 查看） |
+| 扩展 | web-paperize 0.1.0，Load unpacked |
+
+测试 URL：
+
+- 本地夹具：`tests/fixtures/benchmark.html`（file://）
+- MDN：<https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Guide/Regular_expressions>
+- GitHub：<https://github.com/microsoft/vscode>
+- 中文长文：<https://www.ruanyifeng.com/blog/2019/09/curl-reference.html>
+- 维基：<https://zh.wikipedia.org/wiki/人工智能>
+- ChatGPT：用户自有长会话（虚拟化 DOM 不支持类别）
 
 ## 真实网站矩阵
 

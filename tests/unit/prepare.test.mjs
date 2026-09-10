@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 
 import * as prep from '../../src/background/prepare.js';
 
-// Every function injected into a page must be fully self contained: it gets
-// serialised by chrome.scripting.executeScript, so imports or closure
-// references would break at runtime, far from here. Parse each one standalone
-// and make sure the shared state namespace is referenced, not captured.
+// Every function injected into a page must be serialisable by
+// chrome.scripting.executeScript: no import/require statements, and the
+// function text must parse on its own. This is a static serialisability
+// check only — it cannot catch free-variable references at runtime; those
+// are covered by the browser harness (tests/tools/build-harness.py).
 const INJECTED = [
   'measurePage',
   'primePage',
@@ -21,7 +22,7 @@ for (const name of INJECTED) {
     assert.equal(typeof prep[name], 'function');
     const source = prep[name].toString();
     assert.ok(!/\bimport\s|\brequire\s*\(/.test(source), 'must not import or require');
-    // Parses as a standalone expression => no dangling closure references.
+    // Must parse as a standalone function expression (serialisability).
     new Function(`return (${source});`);
   });
 }

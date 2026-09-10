@@ -7,9 +7,33 @@ web-paperize 自身为 MIT（见根目录 `LICENSE`）。本文件登记上游�
 
 Copyright (c) 2026 Guillermo Sotelo · <https://github.com/guillesotelo/page2pdf>
 
-使用方式：结构级借鉴 + 部分函数重写（cdp 会话管理设计、undo-log 页面预处理管线、
-offscreen blob URL 下载方案、分页友好 CSS 规则）。重写而非逐字复制；仍在源码与
-文档中以本条目致谢。若未来出现逐字复制，须在此追加完整 MIT 许可文本。
+使用方式：`src/background/cdp.js`（引用计数 attach、withDebugger、CdpError、
+readStream、失败原因翻译）与 undo-log 页面预处理管线、offscreen blob URL 下载方案、
+分页友好 CSS 规则的结构与控制流均借鉴自该项目并重写；源码内已标注
+"design informed by page2pdf"。因结构级相似构成 substantial reuse，以下保留其完整
+MIT 许可声明：
+
+> MIT License
+>
+> Copyright (c) 2026 Guillermo Sotelo
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
 
 ## Bubu89/full-page-pdf-snap — MIT
 

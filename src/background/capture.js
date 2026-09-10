@@ -54,20 +54,35 @@ export async function capturePage(tabId, settings, options = {}) {
   const onProgress = options.onProgress || (() => {});
   return cdp.withDebugger(tabId, async () => {
     const startUrl = await inject(tabId, () => location.href);
-    // Tab zoom leaks into printToPDF: a 150% tab lays out at a narrower CSS
-    // viewport and prints a different document (measured 2026-09-10: MDN went
-    // 8 -> 13 pages, GitHub vscode 2 -> 4). Normalise to 100% for the capture
-    // and restore the user's zoom afterwards.
+    // Tab zoom leaks into printToPDF (measured 2026-09-10: MDN 8 -> 13 pages,
+    // GitHub vscode 2 -> 4). Normalise to 100% for the capture and restore
+    // afterwards. Chrome's default zoom scope is per-ORIGIN, so a plain
+    // setZoom would also re-zoom other tabs of the same site and rewrite the
+    // zoom Chrome remembers for that origin — switch this tab to per-tab
+    // scope first, and restore both zoom and scope when done.
     let originalZoom = 1;
+    let originalZoomSettings = null;
+    let zoomTouched = false;
     try {
       originalZoom = (await chrome.tabs.getZoom(tabId)) || 1;
     } catch {
       originalZoom = 1;
     }
-    const zoomNormalised =
+    const needZoomNormalise =
       Number.isFinite(originalZoom) && originalZoom > 0 && originalZoom !== 1;
-    if (zoomNormalised) {
-      await chrome.tabs.setZoom(tabId, 1).catch(() => {});
+    if (needZoomNormalise) {
+      try {
+        originalZoomSettings = await chrome.tabs.getZoomSettings(tabId);
+        await chrome.tabs.setZoomSettings(tabId, { scope: 'per-tab' });
+        zoomTouched = true;
+        await chrome.tabs.setZoom(tabId, 1);
+      } catch {
+        // Zoom normalisation is a verified correctness condition for the PDF;
+        // failing silently would produce a wrong document.
+        throw new Error(
+          'Could not normalise the page zoom for export. Set the tab zoom to 100% and try again.'
+        );
+      }
       await new Promise((r) => setTimeout(r, 150)); // let the reflow settle
     }
     let overrodeViewport = false;
@@ -176,8 +191,14 @@ export async function capturePage(tabId, settings, options = {}) {
       let result;
       try {
         result = await cdp.send(tabId, 'Page.printToPDF', params);
-      } catch {
-        delete params.generateTaggedPDF; // not on every Chromium build
+      } catch (err) {
+        // Retry only for the documented compatibility case: older Chromium
+        // builds reject the generateTaggedPDF parameter itself. Everything
+        // else (debugger detached, target closed, engine failure) must
+        // surface as-is instead of printing a second time.
+        const message = err && err.message ? err.message : '';
+        if (!/generateTaggedPDF|Invalid parameters/i.test(message)) throw err;
+        delete params.generateTaggedPDF;
         result = await cdp.send(tabId, 'Page.printToPDF', params);
       }
       const bytes = result.stream
@@ -202,8 +223,16 @@ export async function capturePage(tabId, settings, options = {}) {
       if (overrodeViewport) {
         await cdp.send(tabId, 'Emulation.clearDeviceMetricsOverride').catch(() => {});
       }
-      if (zoomNormalised) {
+      if (zoomTouched) {
         await chrome.tabs.setZoom(tabId, originalZoom).catch(() => {});
+        if (originalZoomSettings) {
+          await chrome.tabs
+            .setZoomSettings(tabId, {
+              mode: originalZoomSettings.mode,
+              scope: originalZoomSettings.scope,
+            })
+            .catch(() => {});
+        }
       }
     }
   });

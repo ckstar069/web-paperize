@@ -1,6 +1,9 @@
 /**
- * Settings store: global defaults in chrome.storage.sync under `defaults`.
- * Per-site presets are planned for V0.3 and deliberately not modelled yet.
+ * Settings store: global defaults in chrome.storage.local under `defaults`.
+ * Deliberately local (not sync): the extension promises that nothing but the
+ * extension itself touches the user's data, and storage.sync would ship the
+ * settings to other signed-in Chrome profiles. Per-site presets are planned
+ * for V0.3 and deliberately not modelled yet.
  */
 
 export const DEFAULTS = {
@@ -19,13 +22,13 @@ const cache = { defaults: null };
 
 async function read() {
   if (cache.defaults) return cache.defaults;
-  const stored = await chrome.storage.sync.get({ defaults: {} });
+  const stored = await chrome.storage.local.get({ defaults: {} });
   cache.defaults = { ...DEFAULTS, ...(stored.defaults || {}) };
   return cache.defaults;
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'sync' || !changes.defaults) return;
+  if (area !== 'local' || !changes.defaults) return;
   cache.defaults = { ...DEFAULTS, ...(changes.defaults.newValue || {}) };
 });
 
@@ -36,6 +39,6 @@ export async function getDefaults() {
 export async function setDefaults(patch) {
   const next = { ...(await read()), ...patch };
   cache.defaults = next;
-  await chrome.storage.sync.set({ defaults: next });
+  await chrome.storage.local.set({ defaults: next });
   return { ...next };
 }

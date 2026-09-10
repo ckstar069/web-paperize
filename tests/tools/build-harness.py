@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Build a harness page: benchmark fixture + real prepare.js + test runner."""
+import os
 import re
 
-ROOT = "/Users/ckstar/Repo/web-paperize"
+ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)  # tests/tools/ -> tests/ -> repo root
 prepare = open(f"{ROOT}/src/background/prepare.js", encoding="utf-8").read()
 # strip module syntax so the real function sources run as classic script
 prepare = re.sub(r"^export (async )?function", r"\1function", prepare, flags=re.M)
@@ -17,7 +20,7 @@ function captureState() {
   const overlay = document.querySelector('.cookie-consent-overlay');
   const scroller = document.getElementById('scroller');
   const dataSrcImg = Array.from(document.images).find((i) => i.alt && i.alt.includes('data-src'));
-  const lazyImgs = Array.from(document.images).filter((i) => i.alt && i.alt.startsWith('LAZY'));
+  const lazyImgs = Array.from(document.images).filter((i) => i.alt && /^lazy\\s/i.test(i.alt));
   return {
     sticky: header ? getComputedStyle(header).position : 'missing',
     overlay: overlay ? getComputedStyle(overlay).display : 'missing',

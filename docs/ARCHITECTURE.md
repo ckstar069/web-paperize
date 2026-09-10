@@ -10,15 +10,19 @@
   ↓ runtime.sendMessage({action:'capture', overrides})
 [service worker]
   ↓ cdp.withDebugger(tabId, …)             # 引用计数 + try/finally detach
+  ├─ zoom 归一化：originalZoom/zoomSettings = tabs.getZoom(s)；≠100% 时先
+  │    setZoomSettings({scope:'per-tab'})（Chrome 默认 per-origin，会波及同源其他 tab）
+  │    再 setZoom(1)；失败即报错提示用户手动设 100%
+  │    （2026-09-10 实测：150% 下 MDN 8→13 页、vscode 2→4 页，缩放会泄漏进 printToPDF）
   ├─ Emulation.setEmulatedMedia({media:'screen', features:[reduced-motion]})
   ├─ prepare：primePage → declutter → expand → applyPrintCss   # 全程记 undo log
   ├─ 量取 contentWidth/contentHeight（三重测量取最大）
-  ├─ zoom 归一化：originalZoom = tabs.getZoom；≠1 则 tabs.setZoom(tabId, 1) 并等待重排
-  │    （2026-09-10 实测：150% 下 MDN 8→13 页、vscode 2→4 页，缩放会泄漏进 printToPDF）
-  ├─ 计算 paper/scale/margin（fitWidth：scale=printableWidthPx/contentWidth，clamp[0.1,1]）
-  ├─ Page.printToPDF({ transferMode:'ReturnAsStream', … })
+  ├─ 横向溢出时：视口定点迭代（setDeviceMetricsOverride 撑宽至文档宽度收敛）
+  ├─ 计算 paper/scale/margin（fitWidth：computeFitScale 带 2% 宽度余量）
+  ├─ Page.printToPDF({ transferMode:'ReturnAsStream', … })（仅参数不兼容错误才删 generateTaggedPDF 重试）
   ├─ IO.read 流式读取 → Uint8Array
-  └─ finally：restorePage（逆序 undo）→ media 复位 → 恢复原 zoom → detach
+  └─ finally：restorePage（逆序 undo）→ media 复位 → clear 视口覆盖
+       → setZoom(originalZoom) → setZoomSettings(原值) → detach
 [download]
   ↓ offscreen document 铸 blob URL（失败兜底 data: URL）
   ↓ chrome.downloads.download({filename:'{title}.pdf'})
@@ -38,7 +42,7 @@ web-paperize/
 │   │   ├── cdp.js              # chrome.debugger 封装（引用计数/withDebugger/CdpError/readStream）
 │   │   ├── capture.js          # capturePage(tabId, settings)：编排 prepare→print→teardown
 │   │   ├── prepare.js          # 注入页面的函数库（每个函数自包含，可被 executeScript 序列化）
-│   │   ├── settings.js         # storage.sync：defaults + 读取/缓存
+│   │   ├── settings.js         # storage.local：defaults + 读取/缓存
 │   │   └── download.js         # offscreen blob URL、文件名模板、保存
 │   ├── popup/
 │   │   ├── popup.html/js/css   # V0.1 唯一 UI：Paper/Layout/Margin + Save 按钮 + 进度
@@ -79,7 +83,7 @@ web-paperize/
 - 捕获开始时记录 `location.href`；teardown 前校验未变（防导航后恢复悬空）。
 
 ### 3.4 settings.js
-- `storage.sync` 键：`defaults`（单对象）。V0.1 字段：`paper('a4'|'letter'), orientation('portrait'|'landscape'), margin('none'|'slim'|'normal'|'wide'), fitWidth(true), printBackground(true), avoidBreaks(true), declutter(true), expandScrollers(true), filenameTemplate('{title}')`。
+- `storage.local` 键：`defaults`（单对象；不用 `storage.sync`，避免设置随 Chrome Sync 离开本机）。V0.1 字段：`paper('a4'|'letter'), orientation('auto'|'portrait'|'landscape'), margin('none'|'slim'|'normal'|'wide'), fitWidth(true), printBackground(true), avoidBreaks(true), declutter(true), expandScrollers(true), filenameTemplate('{title}')`。
 - 内存缓存 + `storage.onChanged` 失效。preset（按 host）留 V0.3，schema 预留。
 
 ### 3.5 download.js + offscreen
@@ -89,24 +93,23 @@ web-paperize/
 ### 3.6 service-worker.js
 - `busyTabs: Set<number>`；同 tab 重复触发 → 明确报错。
 - 消息协议（`{action, …}`，响应统一 `{ok, result|message}`）：
-  - `getState` → {settings, tab:{id,title,url,capturable}, busy, debuggerGranted}
+  - `getState` → {settings, tab:{id,title,url,capturable}, busy}
   - `capture` {overrides} → 执行并回 {filename, size, title, url}
   - `progress`（SW→popup 单向）→ {text, progress}
 - `chrome.debugger.onDetach`（用户点掉调试条）→ 仅标记该 tab 为外部 detach（供错误文案与短路判断）；**不清 busyTabs**——busy 状态只能由 `runCapture` 最外层 finally 清除，避免旧捕获还在 teardown 时放进第二次捕获。
 
 ### 3.7 popup
-- 打开即 `getState`；未授权 debugger → Save 按钮触发 `permissions.request`（popup 点击即用户手势）。
+- 打开即 `getState`；受限页面禁用 Save 并说明原因（debugger 为安装时声明的 required 权限，无运行时请求流程）。
 - 捕获期间监听 progress 更新进度条；完成显示文件名与大小；错误显示分类文案。
 - 受限页面（chrome:// 等）禁用 Save 并说明原因。
 
 ## 4. 权限与隐私
 
 ```json
-"permissions": ["activeTab", "scripting", "downloads", "storage", "offscreen"],
-"optional_permissions": ["debugger"]
+"permissions": ["activeTab", "scripting", "downloads", "storage", "offscreen", "debugger"]
 ```
 
-- **无 host_permissions**：捕获由 popup 点击发起，activeTab 授权当前 tab 足够（比 page2pdf 的 `<all_urls>` 更克制）。
+- **无 host_permissions、无 optional_permissions**：捕获由 popup 点击发起，activeTab 授权当前 tab 足够（比 page2pdf 的 `<all_urls>` 更克制）。
 - `debugger` 为 manifest **required** 权限：Chrome 当前官方规范不允许其出现在 `optional_permissions`（pdfsnap 的 optional 方案属参考项目实现、与规范冲突，不采纳）。因此安装时即声明；运行时没有 permissions.request / debuggerGranted / revoke 流程，popup 不做相关状态。
 - 捕获期间 Chrome 顶部出现"正在调试"提示条属平台行为，无法去除；代码必须保证最短 attach 时间并在一切异常路径 detach。
 - 纯本地：无网络请求、无遥测、不上传任何页面内容。
@@ -115,7 +118,7 @@ web-paperize/
 
 1. debugger 的 detach 是最高优先级 finally；清理步骤**逐一容错**，任何一步失败不影响已产出结果与后续步骤。
 2. 恢复页面（undo log 逆序）与 media/viewport 复位在**同一 finally 链**内，即使 printToPDF 抛错也执行。
-3. 用户可读错误分类：① DevTools 已连接；② 受限页面；③ 该 tab 正在导出；④ 页面无内容/导航中断；⑤ 打印引擎失败（原始信息附后）；⑥ 捕获中 debugger 被外部 detach（用户点了"取消调试"）。
+3. 用户可读错误分类：① DevTools 已连接；② 受限页面；③ 该 tab 正在导出；④ 页面无内容/导航中断；⑤ 打印引擎失败（原始信息附后）；⑥ 捕获中 debugger 被外部 detach（按 onDetach reason 区分：tab 被关闭 / 调试条被点掉 / DevTools 接管）；⑦ zoom 归一化失败（提示手动设 100%）。
 4. badge 错误态 4s 后自动清除；busyTabs 永远在 finally 中移除。
 
 ## 6. 测试策略（V0.1）

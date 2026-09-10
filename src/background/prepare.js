@@ -246,7 +246,8 @@ export function expandContent() {
       el.clientWidth > 40;
     if (!scrollsY && !scrollsX) continue;
     // Long feeds are meant to scroll; expanding one would drown the sheet.
-    if (scrollsY && el.scrollHeight <= 20000) {
+    const yProtected = scrollsY && el.scrollHeight > 20000;
+    if (scrollsY && !yProtected) {
       if (record) {
         record(el, 'max-height');
         record(el, 'height');
@@ -259,7 +260,10 @@ export function expandContent() {
       el.style.setProperty('overflow-y', 'visible', 'important');
       expanded += 1;
     }
-    if (scrollsX && el.scrollWidth <= 20000) {
+    // Unrolling X requires unlocking overflow-y too (a lone visible axis next
+    // to a clipped one computes back to clipped), so a container whose long
+    // vertical feed is protected must not be unrolled sideways either.
+    if (scrollsX && !yProtected && el.scrollWidth <= 20000) {
       if (record) {
         record(el, 'overflow-x');
         record(el, 'overflow-y');
@@ -278,10 +282,15 @@ export function expandContent() {
 
 /** Injects the stylesheet that governs how content renders and breaks for print. */
 export function applyPrintCss(css) {
-  let style = document.getElementById('__wpz-print-css');
-  if (!style) {
+  const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
+  // No DOM id on purpose: the isolated world shares the DOM with the page, so
+  // an id-based ownership claim could collide with — and later delete — a
+  // style element the page itself created. Ownership is the node reference.
+  let style = store.printStyle;
+  if (!style || !style.isConnected) {
     style = document.createElement('style');
-    style.id = '__wpz-print-css';
+    store.printStyle = style;
+    store.injected.push(style);
     document.documentElement.appendChild(style);
   }
   style.textContent = css;
@@ -291,13 +300,12 @@ export function applyPrintCss(css) {
 /** Reverts every mutation journalled by the functions above. */
 export function restorePage() {
   const store = window.__wpz__;
-  const style = document.getElementById('__wpz-print-css');
-  if (style) style.remove();
   if (!store) return true;
   for (const node of store.injected || []) {
     if (node && node.remove) node.remove();
   }
   store.injected = [];
+  store.printStyle = null;
   if (store.undo) {
     for (let i = store.undo.length - 1; i >= 0; i -= 1) {
       const entry = store.undo[i];

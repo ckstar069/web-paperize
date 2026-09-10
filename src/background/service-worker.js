@@ -13,7 +13,8 @@ import { buildFilename } from './util.js';
 import { savePdf } from './download.js';
 
 const busyTabs = new Set();
-const detachedExternally = new Set();
+/** tabId -> chrome.debugger detach reason, for accurate error copy. */
+const detachedExternally = new Map();
 
 function capturable(url) {
   if (!url) return false;
@@ -46,8 +47,7 @@ async function runCapture(tab, { overrides = null } = {}) {
   if (busyTabs.has(tab.id)) throw new Error('This tab is already being exported.');
 
   busyTabs.add(tab.id);
-  detachedExternally.delete(tab.id);
-  const settings = { ...(await getDefaults()), ...(overrides || {}) };
+  detachedExternally.delete(tab.id);  const settings = { ...(await getDefaults()), ...(overrides || {}) };
   setBadge('...');
 
   try {
@@ -62,8 +62,15 @@ async function runCapture(tab, { overrides = null } = {}) {
     return { ...saved, title: metrics.title, url: metrics.url };
   } catch (error) {
     let message = error && error.message ? error.message : 'Export failed.';
-    if (detachedExternally.has(tab.id)) {
+    const detachReason = detachedExternally.get(tab.id);
+    if (detachReason === 'target_closed') {
+      message = 'Export interrupted: the tab was closed.';
+    } else if (detachReason === 'canceled_by_user') {
       message = 'Export interrupted: the debugging bar was dismissed.';
+    } else if (detachReason === 'replaced_with_devtools') {
+      message = 'Export interrupted: DevTools was opened for this tab.';
+    } else if (detachReason) {
+      message = 'Export interrupted: the debugging session ended unexpectedly.';
     }
     setBadge('ERR', '#dc2626');
     clearBadgeSoon(4000);
@@ -122,6 +129,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.debugger.onDetach.addListener((source) => {
-  // Mark only, never release busy state here (ARCHITECTURE §3.6).
-  if (source && typeof source.tabId === 'number') detachedExternally.add(source.tabId);
+  // Mark only, never release busy state here (ARCHITECTURE §3.6); keep the
+  // reason so the error copy can say what actually happened.
+  if (source && typeof source.tabId === 'number') {
+    detachedExternally.set(source.tabId, source.reason || 'unknown');
+  }
 });
