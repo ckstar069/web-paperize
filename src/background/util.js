@@ -63,6 +63,20 @@ export function paperInches(settings, contentWidthPx = 0) {
 }
 
 /**
+ * Counts pages in a printed PDF's raw bytes (works on Chrome's output; page
+ * objects are written uncompressed in the object table). Used to check that a
+ * single-sheet print did not get split by a reflow.
+ */
+export function countPdfPages(bytes) {
+  let text = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    text += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return (text.match(/\/Type\s*\/Page[^s]/g) || []).length;
+}
+
+/**
  * Height of a single continuous sheet for the given content, or null when the
  * content would exceed the product-safe cap (caller falls back to pagination).
  */

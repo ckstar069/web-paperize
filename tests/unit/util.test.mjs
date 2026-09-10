@@ -8,11 +8,21 @@ import {
   paperInches,
   marginInches,
   continuousPaperHeight,
+  countPdfPages,
   clamp,
   computeFitScale,
   sanitizeFilename,
   buildFilename,
 } from '../../src/background/util.js';
+
+test('countPdfPages counts page objects without counting the page tree', () => {
+  const page = (s) => new TextEncoder().encode(s);
+  const one = page('%PDF-1.4 << /Type /Page /Parent 2 0 R >> << /Type /Pages /Count 1 >>');
+  const three = page('x /Type /Page y /Type /Pages /Type /Page z /Type /Page w');
+  assert.equal(countPdfPages(one), 1);
+  assert.equal(countPdfPages(three), 3);
+  assert.equal(countPdfPages(new Uint8Array(0)), 0);
+});
 
 test('product-safe continuous cap stays at the PDF default user space limit', () => {
   assert.equal(MAX_CONTINUOUS_INCHES, 200);

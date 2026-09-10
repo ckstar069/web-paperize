@@ -12,10 +12,12 @@
 import * as cdp from './cdp.js';
 import * as prep from './prepare.js';
 import {
+  PAPER_SIZES,
   paperInches,
   marginInches,
   computeFitScale,
   continuousPaperHeight,
+  countPdfPages,
   CSS_PX_PER_INCH,
 } from './util.js';
 import { base64ChunksToBytes, base64ToBytes } from './download.js';
@@ -259,9 +261,10 @@ export async function capturePage(tabId, settings, options = {}) {
         transferMode: 'ReturnAsStream',
         generateTaggedPDF: true,
       };
+      const print = () => cdp.send(tabId, 'Page.printToPDF', params);
       let result;
       try {
-        result = await cdp.send(tabId, 'Page.printToPDF', params);
+        result = await print();
       } catch (err) {
         // Retry only for the documented compatibility case: older Chromium
         // builds reject the generateTaggedPDF parameter itself. Everything
@@ -270,11 +273,26 @@ export async function capturePage(tabId, settings, options = {}) {
         const message = err && err.message ? err.message : '';
         if (!/generateTaggedPDF|Invalid parameters/i.test(message)) throw err;
         delete params.generateTaggedPDF;
-        result = await cdp.send(tabId, 'Page.printToPDF', params);
+        result = await print();
       }
-      const bytes = result.stream
-        ? base64ChunksToBytes(await cdp.readStream(tabId, result.stream))
-        : base64ToBytes(result.data);
+      const toBytes = async () =>
+        result.stream
+          ? base64ChunksToBytes(await cdp.readStream(tabId, result.stream))
+          : base64ToBytes(result.data);
+      let bytes = await toBytes();
+
+      // A single sheet can still come back split: the content reflows at the
+      // print layout width (seen on a selection export: a 2.9in sheet arrived
+      // as 6 pages). Detect and reprint paginated instead of shipping slices.
+      if (oneSheet && countPdfPages(bytes) > 1) {
+        onProgress('Content reflowed past one sheet — paginating instead');
+        delete params.generateTaggedPDF;
+        params.paperWidth = PAPER_SIZES.a4.width;
+        params.paperHeight = PAPER_SIZES.a4.height;
+        params.landscape = false;
+        result = await print();
+        bytes = await toBytes();
+      }
       return {
         bytes,
         metrics: { ...metrics, zoom, orientation, scale, scope, oneSheet },

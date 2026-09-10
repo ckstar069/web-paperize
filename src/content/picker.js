@@ -22,6 +22,28 @@
 
   const ownUi = (el) => el === box || el === tag || el === hint;
 
+  /**
+   * The element under the cursor is usually the deepest inline node (a span,
+   * an icon, a link). What reads as "the block I'm pointing at" is its
+   * nearest block-level ancestor of a sensible size — without this climb the
+   * default pick can be a single 17px text line (seen on GitHub: the export
+   * came out as a 3.3×0.6in sheet holding one filename).
+   */
+  function blockFor(el) {
+    let node = el;
+    for (let i = 0; i < 16 && node && node !== document.body && node !== document.documentElement; i += 1) {
+      const cs = getComputedStyle(node);
+      const r = node.getBoundingClientRect();
+      const inlineish = String(cs.display).startsWith('inline');
+      const tiny = r.width < 120 || r.height < 16;
+      if (!inlineish && !tiny) return node;
+      node = node.parentElement;
+    }
+    return node || el;
+  }
+
+  let lastDeep = null;
+
   function makeUi() {
     box = document.createElement('div');
     box.style.cssText =
@@ -72,8 +94,10 @@
       outline(null);
       return;
     }
-    if (current && (el === current || current.contains(el))) return; // keep the wider pick stable
-    outline(el);
+    lastDeep = el;
+    const block = blockFor(el);
+    if (current && (block === current || current.contains(block))) return; // keep the wider pick stable
+    outline(block);
   }
 
   function onKey(ev) {
@@ -87,7 +111,15 @@
       if (parent !== document.body && parent !== document.documentElement) outline(parent);
     } else if (ev.key === 'ArrowDown' && current) {
       ev.preventDefault();
-      const child = current.firstElementChild;
+      // Descend towards whatever the cursor is actually over, not just the
+      // first child: the child of `current` on the path to lastDeep.
+      let child = null;
+      let node = lastDeep;
+      while (node && node.parentElement && node.parentElement !== current) {
+        node = node.parentElement;
+      }
+      if (node && node.parentElement === current && node !== current) child = node;
+      if (!child) child = current.firstElementChild;
       if (child && child instanceof HTMLElement) outline(child);
     }
   }
@@ -96,11 +128,10 @@
     if (!active) return;
     ev.preventDefault();
     ev.stopPropagation();
-    let el = ev.target;
-    while (el && ownUi(el)) el = el.parentElement;
-    if (!el || el === document.documentElement || el === document.body) return;
+    const picked = current || (lastDeep ? blockFor(lastDeep) : null);
+    if (!picked || picked === document.documentElement || picked === document.body) return;
     const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
-    store.pickedElement = el;
+    store.pickedElement = picked;
     stop();
     try {
       chrome.runtime.sendMessage({ action: 'capturePicked' }, () => {});
