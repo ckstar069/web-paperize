@@ -44,6 +44,29 @@
 
   let lastDeep = null;
 
+  /**
+   * Picks the element to outline from everything under the cursor. A plain
+   * elementFromPoint is not enough: sites plant transparent page-wide overlays
+   * (portals, backdrops) that swallow every hit — on one GitHub page the
+   * picker could therefore only ever select "the whole page" (1865px wide).
+   * elementsFromPoint returns the full stack, so walk it and take the first
+   * candidate that actually carries content or is itself media, skipping the
+   * empty overlay shells on top.
+   */
+  function contentAt(x, y) {
+    const stack = document.elementsFromPoint(x, y);
+    for (const el of stack) {
+      if (!(el instanceof HTMLElement) && !(el instanceof SVGElement)) continue;
+      if (ownUi(el) || el === document.documentElement || el === document.body) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+      const tag = el.tagName;
+      if (tag === 'IMG' || tag === 'CANVAS' || tag === 'VIDEO' || tag === 'SVG') return el;
+      if ((el.textContent || '').trim()) return el;
+    }
+    return null;
+  }
+
   function makeUi() {
     box = document.createElement('div');
     box.style.cssText =
@@ -88,9 +111,8 @@
 
   function onMouseMove(ev) {
     if (!active) return;
-    let el = document.elementFromPoint(ev.clientX, ev.clientY);
-    while (el && ownUi(el)) el = el.parentElement;
-    if (!el || el === document.documentElement || el === document.body) {
+    const el = contentAt(ev.clientX, ev.clientY);
+    if (!el) {
       outline(null);
       return;
     }
@@ -128,7 +150,7 @@
     if (!active) return;
     ev.preventDefault();
     ev.stopPropagation();
-    const picked = current || (lastDeep ? blockFor(lastDeep) : null);
+    const picked = current || (ev.clientX != null ? blockFor(contentAt(ev.clientX, ev.clientY) || ev.target) : null);
     if (!picked || picked === document.documentElement || picked === document.body) return;
     const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
     store.pickedElement = picked;
