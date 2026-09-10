@@ -34,6 +34,10 @@ export const BASE_CSS = `
   html, body { scrollbar-width: none !important; }
   /* Paper has no horizontal scroll: long code lines wrap instead of clipping. */
   pre { white-space: pre-wrap !important; overflow-wrap: anywhere !important; }
+  /* The picker UI must never print, even when a second picker session was
+     opened mid-capture (its elements are injected after isolation hid the
+     first set — this belt catches any [data-wpz-ui] node at print time). */
+  [data-wpz-ui] { display: none !important; }
 `;
 
 export const BREAK_CSS = `
@@ -155,6 +159,11 @@ export async function capturePage(tabId, settings, options = {}) {
         if (!ok) throw new Error('Select some text on the page first, then export.');
       }
       if (elementScope) {
+        // A picker re-opened while a capture is in flight would inject fresh
+        // UI after isolation hid the previous set — stop it up front.
+        await inject(tabId, () => {
+          if (window.__wpzPicker && window.__wpzPicker.stop) window.__wpzPicker.stop();
+        }).catch(() => {});
         onProgress('Isolating the picked region');
         region = await inject(tabId, prep.isolateElement);
         if (!region) throw new Error('Nothing was picked to export. Try the picker again.');
@@ -162,6 +171,15 @@ export async function capturePage(tabId, settings, options = {}) {
         await new Promise((r) => setTimeout(r, 150));
         region = await inject(tabId, prep.measureTarget);
         if (!region) throw new Error('The picked region disappeared before it could be exported.');
+        const pickedInfo = await inject(tabId, () => {
+          const el = window.__wpz__ && window.__wpz__.pickedElement;
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}.${
+            typeof el.className === 'string' ? el.className.split(' ')[0] : ''
+          } ${Math.round(r.width)}x${Math.round(r.height)}`;
+        });
+        console.log('[wpz] picked:', pickedInfo);
       }
 
       onProgress('Measuring');

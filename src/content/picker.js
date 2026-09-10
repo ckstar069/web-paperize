@@ -76,14 +76,17 @@
 
   function makeUi() {
     box = document.createElement('div');
+    box.dataset.wpzUi = '';
     box.style.cssText =
       `position:fixed;pointer-events:none;z-index:${Z};border:2px solid rgba(79,70,229,.95);` +
       'border-radius:6px;background:rgba(79,70,229,.12);transition:all .08s linear;';
     tag = document.createElement('div');
+    tag.dataset.wpzUi = '';
     tag.style.cssText =
       `position:fixed;pointer-events:none;z-index:${Z + 1};font:600 11px/1 ui-monospace,Menlo,monospace;` +
       'color:#fff;background:rgba(30,34,66,.92);padding:4px 7px;border-radius:6px;white-space:nowrap;';
     hint = document.createElement('div');
+    hint.dataset.wpzUi = '';
     hint.style.cssText =
       `position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:${Z + 1};pointer-events:none;` +
       "font:500 13px/1 -apple-system,'Segoe UI',Roboto,sans-serif;color:#eaf2ff;" +
