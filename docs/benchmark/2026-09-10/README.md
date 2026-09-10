@@ -43,8 +43,8 @@ settings 改 storage.local；harness 路径/lazy 选择器/注释修正；三份
 （虚拟化 DOM 正式划出范围）；THIRD_PARTY_NOTICES 纳入 page2pdf 完整 MIT notice。
 浏览器 harness 复验：decoy style 存活、Y 保护生效、宽度往返一致（17 项单测全过）。
 
-**待人工验证**（H1 附带要求）：同 origin 双标签页——A 设 150% 导出期间与之后，
-B 标签页缩放应始终为 150% 不变。
+**已人工验证**（H1 附带要求，2026-09-10 用户确认）：同 origin 双标签页导出期间与
+结束后，另一标签页缩放始终保持 150% 不变。
 
 ## 测试环境
 
