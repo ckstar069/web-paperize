@@ -63,6 +63,15 @@ export const NO_BREAK_CSS = `
     page-break-after: auto !important;
     page-break-inside: auto !important;
   }
+  /* Narrow sheets print with a narrow media-query viewport, which trips the
+     responsive hide utilities sites use when content relocates on mobile
+     (GitHub's sidebar About carries hide-sm hide-md and vanished from
+     element exports). Single-sheet exports print an isolated subtree, so the
+     relocated copy is never in it — un-hide the utilities instead. Verified
+     against a snapshot of the real page. */
+  @media (max-width: 767px) {
+    [class*='hide-sm'], [class*='hide-md'] { display: revert !important; }
+  }
 `;
 
 async function inject(tabId, func, args = []) {
@@ -225,8 +234,9 @@ export async function capturePage(tabId, settings, options = {}) {
       }
       console.log('[wpz] measure', {
         scope,
-        contentWidth: metrics.width,
-        contentHeight: metrics.height,
+        region: region ? { width: Math.round(region.width), height: Math.round(region.height) } : null,
+        documentWidth: metrics.width,
+        documentHeight: metrics.height,
         viewportWidth: metrics.viewportWidth,
         originalZoom,
         zoom,

@@ -28,3 +28,9 @@ test('single-sheet mode resets every forced break property', () => {
     assert.match(NO_BREAK_CSS, new RegExp(`${prop.replace('-', '-')}\\s*:\\s*auto`));
   }
 });
+
+test('single-sheet mode un-hides responsive relocate utilities on narrow sheets', () => {
+  assert.match(NO_BREAK_CSS, /\[class\*='hide-sm'\]/);
+  assert.match(NO_BREAK_CSS, /\[class\*='hide-md'\]/);
+  assert.match(NO_BREAK_CSS, /display:\s*revert/);
+});
