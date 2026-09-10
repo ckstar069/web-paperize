@@ -13,3 +13,6 @@ build/
 # 编辑器
 .idea/
 .vscode/
+
+# tooling
+.serena/
