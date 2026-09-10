@@ -73,3 +73,21 @@ settings 改 storage.local；harness 路径/lazy 选择器/注释修正；三份
 | 维基百科「人工智能」 | ✅ 内容完整；4.7 MB、耗时略长（可接受，V0.2 优化项） |
 | ChatGPT 长会话 | ❌ 已知限制：虚拟化会话历史消息离屏即从 DOM 卸载；停留最新处导出 = 6 页（仅尾部），手动跳顶等待后导出 = 1 页（DOM 被骨架/卸载替换）。V0.2 调研 |
 | 内部后台页 | 跳过（无样本；夹具已覆盖该场景） |
+
+## V0.2.0 真机验证（2026-09-10 晚，用户确认）
+
+| 功能 | 结果 |
+| --- | --- |
+| 单张连续长页（tall-pages 150in 单页 / 250in 自动分页） | ✅ |
+| 元素导出（GitHub About 区块，四轮修复后） | ✅ |
+| 选区导出（V2EX ✅；知乎场景已加页数校验自动分页兜底，待复验） | ✅* |
+| 整页导出回归（含 About 侧栏，content-visibility 修复生效） | ✅ |
+
+元素导出 About 缺失的四层根因链（均为引擎/站点机制级发现，commit 6644b77→fadd21a）：
+
+1. picker 默认拾取最深层行内元素 → blockFor 爬升到首个内容区块（675b659）
+2. Chromium 打印管线跳过 content-visibility:auto 子树 → 全局 visible 反制（23ff1c7，V0.1 整页路径同样受益）
+3. picker 根元素返回 + "保持较大选区"守卫锁死整页 + 二次会话 UI 逃逸进打印 → 根因修复 + data-wpz-ui 打印屏蔽（a544e72 / bc1150c）
+4. GitHub About 带 Primer hide-sm/md（窄屏响应式迁移隐藏），窄纸打印视口触发移动断点 → 单页模式 un-hide 反制（fadd21a，真实标签页 DOM 快照离线复现验证）
+
+诊断通道沉淀：[wpz] measure（region/documentWidth 分列）+ [wpz] picked 日志 + AppleScript 登录态标签页只读探针/快照取证。
