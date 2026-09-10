@@ -70,6 +70,7 @@ export async function capturePage(tabId, settings, options = {}) {
       await chrome.tabs.setZoom(tabId, 1).catch(() => {});
       await new Promise((r) => setTimeout(r, 150)); // let the reflow settle
     }
+    let overrodeViewport = false;
     try {
       await cdp.send(tabId, 'Page.enable').catch(() => {});
       await cdp.send(tabId, 'Emulation.setEmulatedMedia', {
@@ -95,9 +96,35 @@ export async function capturePage(tabId, settings, options = {}) {
       await inject(tabId, prep.applyPrintCss, [BASE_CSS + (settings.avoidBreaks ? BREAK_CSS : '')]);
 
       onProgress('Measuring');
-      const metrics = await inject(tabId, prep.measurePage);
+      let metrics = await inject(tabId, prep.measurePage);
       if (!metrics || !metrics.height) {
         throw new Error('The page has no measurable content.');
+      }
+
+      // Wide content inside a centred container keeps sliding right as the
+      // layout widens (measured on the fixture: R(v) = v/2 + c, deltas halve
+      // every step). A single measurement under-shoots that fixed point, so
+      // the table still fell off the sheet even with scale headroom. Walk the
+      // viewport out until the document stops growing, then fit-shrink THAT.
+      if (settings.fitWidth && metrics.width > metrics.viewportWidth * 1.02) {
+        let width = metrics.width;
+        for (let i = 0; i < 8; i += 1) {
+          await cdp
+            .send(tabId, 'Emulation.setDeviceMetricsOverride', {
+              width: Math.round(width),
+              height: Math.max(600, Math.round(metrics.viewportHeight)),
+              deviceScaleFactor: 0,
+              mobile: false,
+            })
+            .catch(() => {});
+          overrodeViewport = true;
+          await new Promise((r) => setTimeout(r, 120));
+          const next = await inject(tabId, prep.measurePage);
+          if (!next || !next.width) break;
+          metrics = next;
+          if (next.width <= width + Math.max(16, width * 0.01)) break;
+          width = next.width;
+        }
       }
 
       // Measurement log (docs/V0.1_SCOPE.md §4 zoom experiments): captures are
@@ -172,6 +199,9 @@ export async function capturePage(tabId, settings, options = {}) {
         console.warn('[wpz] page navigated during capture, skipping restore');
       }
       await cdp.send(tabId, 'Emulation.setEmulatedMedia', { media: '' }).catch(() => {});
+      if (overrodeViewport) {
+        await cdp.send(tabId, 'Emulation.clearDeviceMetricsOverride').catch(() => {});
+      }
       if (zoomNormalised) {
         await chrome.tabs.setZoom(tabId, originalZoom).catch(() => {});
       }

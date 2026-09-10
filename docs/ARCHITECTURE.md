@@ -74,6 +74,7 @@ web-paperize/
 ### 3.3 capture.js
 - `capturePage(tabId, settings, {onProgress})`，整体在 `withDebugger` 内，内层再包 try/finally 调 `teardown`。
 - 顺序硬约束（审计 §1.3/§1.4 的 upstream observation）：**改高度的 prepare 全部完成 → 测量 → （实验性 viewport 覆盖，若启用）→ 打印**。
+- 居中溢出迭代：横向展开后的宽内容（如宽表格）在更宽的布局里会被 `margin:auto` 容器继续右推（2026-09-10 夹具实测：文档宽度随视口宽度呈 R(v)=v/2+c，差量逐轮减半），单次测量必然欠估、scale 余量救不了。捕获时以 `Emulation.setDeviceMetricsOverride` 逐步撑宽视口至文档宽度收敛（≤8 轮、容差 max(16px, 1%)），以收敛宽度计算 fitWidth 缩放；仅当 scrollWidth > 视口×1.02 时触发，普通页面路径不受影响。
 - printToPDF 参数：`printBackground:true, preferCSSPageSize:false, transferMode:'ReturnAsStream', generateTaggedPDF:true`（老版本删参重试）。
 - 捕获开始时记录 `location.href`；teardown 前校验未变（防导航后恢复悬空）。
 
