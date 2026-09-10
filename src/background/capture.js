@@ -14,14 +14,16 @@ import * as prep from './prepare.js';
 import { paperInches, marginInches, clamp, CSS_PX_PER_INCH } from './util.js';
 import { base64ChunksToBytes, base64ToBytes } from './download.js';
 
-const BASE_CSS = `
+export const BASE_CSS = `
   * { animation-play-state: paused !important; transition: none !important; }
   html { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   ::-webkit-scrollbar { display: none !important; }
   html, body { scrollbar-width: none !important; }
+  /* Paper has no horizontal scroll: long code lines wrap instead of clipping. */
+  pre { white-space: pre-wrap !important; overflow-wrap: anywhere !important; }
 `;
 
-const BREAK_CSS = `
+export const BREAK_CSS = `
   img, svg, video, canvas, figure, table, pre, blockquote, li, tr {
     break-inside: avoid !important;
     page-break-inside: avoid !important;

@@ -63,8 +63,8 @@ web-paperize/
 - `record(el, prop, isAttr)`：记录 {el, prop, isAttr, prev, priority} —— 恢复的唯一事实源。
 - `primePage({scrollThrough})`：解锁 body 滚动锁（modal 打开时的 overflow:hidden）→ lazy→eager + data-* 回退 → 逐步滚动（90% 视口高步长，≤400 步，60ms/步，4 倍暴涨熔断）→ 回原位 → 等图（6s/图超时）→ `fonts.ready`（3s 竞速）→ 双 rAF。
 - `declutterPage()`：噪声词隐藏 → 覆盖 ≥80%×70% 或 dialog 隐藏 → 其余 fixed/sticky 改 static → 高 z-index backdrop 隐藏。
-- `expandContent()`：`<details>` 全开；内部滚动容器展开（跳过 >20000px）。
-- `applyPrintCss(css)`：动画暂停 / `print-color-adjust: exact` / 隐藏滚动条 + 分页友好规则（break-inside avoid、thead 重复）。
+- `expandContent()`：`<details>` 全开；纵向滚动容器展开（跳过 >20000px）；横向滚动容器（`overflow-x: auto|scroll`）一并展开，使宽表格把文档撑宽、由整页 fitWidth 缩小兜底（`<pre>` 例外：改走 pre-wrap 换行）。
+- `applyPrintCss(css)`：动画暂停 / `print-color-adjust: exact` / 隐藏滚动条 / `pre` 强制 `pre-wrap + overflow-wrap: anywhere`（纸张没有横向滚动，长代码行换行而非截断）+ 分页友好规则（break-inside avoid、thead 重复）。
 - `measurePage()`：宽高各三重测量取最大 + title/url/host/dpr。
 - `restorePage()`：移除注入节点与 style → 逆序 undo → 清掉因此变空的 `style` 属性 → 回滚滚动位置。
 - 每个函数**幂等可重入**；`restorePage` 对元素已消失逐条容错。

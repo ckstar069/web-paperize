@@ -65,10 +65,15 @@ export async function primePage(options) {
     if (!el) continue;
     const cs = getComputedStyle(el);
     if (cs.overflow === 'hidden' || cs.overflowY === 'hidden' || cs.position === 'fixed') {
-      record(el, 'overflow');
+      // Touch only the axis longhands. Writing the `overflow` shorthand
+      // clobbers inline overflow-x/y beyond what undo entries can restore,
+      // while two longhand writes behave identically in layout.
+      record(el, 'overflow-x');
+      record(el, 'overflow-y');
       record(el, 'position');
       record(el, 'height');
-      el.style.setProperty('overflow', 'visible', 'important');
+      el.style.setProperty('overflow-x', 'visible', 'important');
+      el.style.setProperty('overflow-y', 'visible', 'important');
       if (cs.position === 'fixed') el.style.setProperty('position', 'static', 'important');
       el.style.setProperty('height', 'auto', 'important');
     }
@@ -227,22 +232,46 @@ export function expandContent() {
   for (const el of document.body ? document.body.querySelectorAll('*') : []) {
     if (!(el instanceof HTMLElement) || el === document.body) continue;
     const cs = getComputedStyle(el);
-    const scrolls =
+    const scrollsY =
       (cs.overflowY === 'auto' || cs.overflowY === 'scroll' || cs.overflow === 'auto' || cs.overflow === 'scroll') &&
       el.scrollHeight > el.clientHeight + 8 &&
       el.clientHeight > 40;
-    if (!scrolls) continue;
+    // Horizontal scrollers clip wide tables in print; unrolling them widens the
+    // document so the sheet-level fit-to-width scale shrinks everything instead.
+    // <pre> is exempt: the print CSS wraps long code lines rather than unrolling.
+    const scrollsX =
+      el.tagName !== 'PRE' &&
+      (cs.overflowX === 'auto' || cs.overflowX === 'scroll' || cs.overflow === 'auto' || cs.overflow === 'scroll') &&
+      el.scrollWidth > el.clientWidth + 8 &&
+      el.clientWidth > 40;
+    if (!scrollsY && !scrollsX) continue;
     // Long feeds are meant to scroll; expanding one would drown the sheet.
-    if (el.scrollHeight > 20000) continue;
-    if (record) {
-      record(el, 'max-height');
-      record(el, 'height');
-      record(el, 'overflow');
+    if (scrollsY && el.scrollHeight <= 20000) {
+      if (record) {
+        record(el, 'max-height');
+        record(el, 'height');
+        record(el, 'overflow-x');
+        record(el, 'overflow-y');
+      }
+      el.style.setProperty('max-height', 'none', 'important');
+      el.style.setProperty('height', 'auto', 'important');
+      el.style.setProperty('overflow-x', 'visible', 'important');
+      el.style.setProperty('overflow-y', 'visible', 'important');
+      expanded += 1;
     }
-    el.style.setProperty('max-height', 'none', 'important');
-    el.style.setProperty('height', 'auto', 'important');
-    el.style.setProperty('overflow', 'visible', 'important');
-    expanded += 1;
+    if (scrollsX && el.scrollWidth <= 20000) {
+      if (record) {
+        record(el, 'overflow-x');
+        record(el, 'overflow-y');
+        record(el, 'max-width');
+        record(el, 'width');
+      }
+      el.style.setProperty('overflow-x', 'visible', 'important');
+      el.style.setProperty('overflow-y', 'visible', 'important');
+      el.style.setProperty('max-width', 'none', 'important');
+      el.style.setProperty('width', 'auto', 'important');
+      expanded += 1;
+    }
   }
   return expanded;
 }

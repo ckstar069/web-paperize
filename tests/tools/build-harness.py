@@ -29,6 +29,11 @@ function captureState() {
     headerStyleAttr: header.getAttribute('style'),
     scrollY: Math.round(window.scrollY),
     docHeight: document.documentElement.scrollHeight,
+    docWidth: document.documentElement.scrollWidth,
+    tableClipped: (function () {
+      const wrap = document.querySelector('div[style*="overflow-x"]');
+      return wrap ? wrap.scrollWidth > wrap.clientWidth + 8 : null;
+    })(),
   };
 }
 
@@ -49,5 +54,7 @@ window.runTest = async () => {
 harness = fixture.replace("</body>", runner + "</body>")
 harness = harness.replace("</head>", f"<script>\n{prepare}\n</script>\n</head>")
 out = "/tmp/zcode-v01-impl/harness.html"
+import os
+os.makedirs(os.path.dirname(out), exist_ok=True)
 open(out, "w", encoding="utf-8").write(harness)
 print("wrote", out, len(harness), "bytes")
