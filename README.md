@@ -37,6 +37,8 @@ V0.1 已实现并通过首批基准（2026-09-10：本地夹具、真实网站�
 3. 权限说明：`debugger` 为安装时声明（Chrome 规范不允许 optional）；捕获期间 Chrome 顶部会出现"正在调试"提示条，导出完成后自动消失
 4. 测试：`npm test`（纯函数单测 + 注入函数自包含检查）；本地基准夹具：`tests/fixtures/benchmark.html`
 
+- [docs/V0.2_PLAN.md](docs/V0.2_PLAN.md) — V0.2 规划（ChatGPT 会话调查、元素/选区导出、连续长页、Snapshot 接口）
+
 参考项目：
 
 
