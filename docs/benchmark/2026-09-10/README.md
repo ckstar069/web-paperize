@@ -98,3 +98,13 @@ settings 改 storage.local；harness 路径/lazy 选择器/注释修正；三份
 - **v3 "grouped_webpages"（source chip 格式，本次补齐）**：{matched_text(可为多 token 拼接整串，如 `citeturn393482search8turn367824search5`), type:'grouped_webpages', attribution(chip 名，如 Bilibili/4PDA), safe_urls:[规范 URL, …utm 变体], items:[{title,url,attribution,pub_date}], alt:'([chip](url))', refs:[]}
 - citations[]（旧【N†】索引）与 attachments/image 指针形状不变
 - 内部引用按 type 精确枚举过滤（suggest_automation 等），不做关键词模糊匹配（网页标题可含 automation/system）
+
+## V0.2.1 FINAL PASS（2026-09-11，ChatGPT 会话集中审核确认）
+
+- 收官验证："查询开机密码问题"会话重导出 PDF 经结构级审核——**58 个 PDF URI 注解 / 41 个不同 URL**，
+  Bilibili、didmax、lEnxY Blog、什么值得买、4PDA、Win-Raid、Reddit 等全部进入 Sources 且可点击；
+  正文 [n] 编号正确；无 suggest_automation/citeturn/turn0file 内部 token；图片/附件/排版无 regression
+- 引用全链路闭环：source chip → conversation payload → grouped_webpages → normalize → [n] → Sources →
+  <a href> → Chromium printToPDF → PDF /URI annotation
+- 最终状态：全部能力 PASS；version 0.2.1（HEAD 2f80cc4 + 本记录）；**ChatGPT 专项开发结束，
+  不预定义 V0.3，项目转入普通网页日常使用驱动稳定期**
