@@ -30,6 +30,7 @@ V0.2.0 已实现并通过真机验证（2026-09-10，见 [docs/benchmark/2026-09
 - **元素导出**：图标 → Pick an element…（或右键）→ 悬停出现紫框（跟随鼠标），**↑/↓ 扩大/缩小选区**，点击导出所选区块
 - **选区导出**：选中文字 → 右键 → Save selection as PDF
 - **单张连续长页**：勾选 One continuous page（上限 200in，超限自动回退 A4 分页）
+- **ChatGPT 完整会话**：在会话页直接 Save as PDF——绕过虚拟化 DOM 从会话接口取全量内容（含引用编号与来源列表、图片内嵌、附件清单）；右键 "Save visible page as PDF (no adapter)" 可导出当前可见内容
 
 - [docs/REFERENCE_IMPLEMENTATION_ASSESSMENT.md](docs/REFERENCE_IMPLEMENTATION_ASSESSMENT.md) — 四个参考项目的逐能力评估与代码血缘台账
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — V0.1 架构（模块契约、数据流、权限模型）

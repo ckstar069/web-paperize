@@ -56,6 +56,45 @@ export async function acquireConversation() {
 
   const normalized = normalizeConversation(convo);
   if (normalized.error) return { error: normalized.error };
+
+  // Resolve conversation images to signed URLs — requests go only to
+  // ChatGPT/OpenAI services, the token stays in memory, and nothing is logged.
+  // Bounded: at most MAX_IMAGES resolutions, oversized/failed ones degrade to
+  // placeholders instead of blocking the export.
+  const MAX_IMAGES = 40;
+  const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+  let budget = MAX_IMAGES;
+  for (const message of normalized.messages) {
+    if (!Array.isArray(message.images)) continue;
+    for (const image of message.images) {
+      if (budget <= 0) {
+        image.omitted = true;
+        continue;
+      }
+      if (!image.fileId || (image.size_bytes && image.size_bytes > MAX_IMAGE_BYTES)) {
+        image.failed = true;
+        continue;
+      }
+      budget -= 1;
+      try {
+        const r = await withDeadline(
+          `/backend-api/files/download/${encodeURIComponent(image.fileId)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+          12000,
+          (res) => {
+            if (!res.ok) throw new Error(`files HTTP ${res.status}`);
+            return res.json();
+          }
+        );
+        const url = r && (r.download_url || r.url);
+        if (typeof url === 'string' && /^https?:\/\//i.test(url)) image.url = url;
+        else image.failed = true;
+      } catch {
+        image.failed = true;
+      }
+    }
+  }
+
   return {
     source: 'chatgpt',
     title: normalized.title || document.title || 'ChatGPT conversation',

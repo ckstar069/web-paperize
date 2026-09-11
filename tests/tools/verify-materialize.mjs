@@ -9,14 +9,14 @@ const strip = (p) => readFileSync(p, 'utf8').replace(/^import .*$/gm, '').replac
 const sources = strip(new URL('../../src/adapter/chatgpt/markdown.js', import.meta.url).pathname) + '\n' + strip(new URL('../../src/adapter/chatgpt/materialize.js', import.meta.url).pathname);
 const MODEL = JSON.stringify({
   source: 'chatgpt', title: '测试会话', url: 'https://chatgpt.com/c/test',
-  messages: [
+  messages: [ { role: 'user', text: '附件与来源消息' , attachments: [{ name: 'report.pdf', mime_type: 'application/pdf', size: 515521 }] },
     { role: 'user', text: '请给一段 **加粗**、`代码`、[链接](https://example.com) 和危险链接 [x](javascript:alert(1))' },
-    { role: 'assistant', text: '# 标题\n\n- 列表项\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```js\nlet x = 1;\n```' },
+    { role: 'assistant', text: '# 标题\n\n- 列表项\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```js\nlet x = 1;\n```\n\n引用[1]见来源。\n\n@@WPZIMG0@@\n\n结尾', images: [{ failed: true }], sources: [{ label: '示例来源', url: 'https://example.com/src' }] },
   ],
 });
 const PROBE = `(async () => {
   ${sources}
-  const ok = materializeConversation(${MODEL});
+  const ok = await materializeConversation(${MODEL});
   const host = document.querySelector('[data-wpz-materialized]');
   const shadow = host && host.shadowRoot;
   const doc = shadow && shadow.querySelector('.doc');
@@ -28,6 +28,10 @@ const PROBE = `(async () => {
     tables: doc ? doc.querySelectorAll('table').length : 0,
     listItems: doc ? doc.querySelectorAll('li').length : 0,
     links: doc ? [...doc.querySelectorAll('a')].map((a) => a.getAttribute('href')) : [],
+    imgPlaceholders: doc ? doc.querySelectorAll('.img-placeholder').length : -1,
+    sourceLinks: doc ? [...doc.querySelectorAll('.sources a')].map((a) => a.getAttribute('href')) : [],
+    citeMarker: doc ? [...doc.querySelectorAll('.bubble')].some((b) => b.textContent.includes('[1]')) : false,
+    attachmentNotes: doc ? doc.querySelectorAll('.attachment-note').length : -1,
     scriptTags: doc ? doc.querySelectorAll('script').length : -1,
     boldText: doc ? (doc.querySelector('strong') || {}).textContent : null,
     width: host ? Math.round(host.getBoundingClientRect().width) : 0, hostCss: host ? host.style.cssText : null, docRect: (shadow && shadow.querySelector('.doc')) ? (r => Math.round(r.width) + '@' + Math.round(r.left))(shadow.querySelector('.doc').getBoundingClientRect()) : null,
@@ -54,8 +58,11 @@ try {
     const v = JSON.parse(r.result.value);
     const checks = [
       ['materialize ok + host in body + registered', v.ok && v.hostInBody && v.hostRegistered && v.picked],
-      ['2 turns, heading/code/table/list rendered', v.turns === 2 && v.h2 === 1 && v.codeBlocks === 1 && v.tables === 1 && v.listItems === 1],
-      ['only http(s) links survive', v.links.length === 1 && v.links[0] === 'https://example.com'],
+      ['3 turns, heading/code/table/list rendered', v.turns === 3 && v.h2 === 1 && v.codeBlocks === 1 && v.tables === 1 && v.listItems === 1],
+    ['image placeholder for failed image', v.imgPlaceholders === 1],
+    ['sources block with safe link', v.sourceLinks.length === 1 && v.sourceLinks[0] === 'https://example.com/src' && v.citeMarker],
+    ['attachment note rendered', v.attachmentNotes === 1],
+      ['only http(s) links survive', v.links.length >= 1 && v.links.every((l) => /^https:\/\//.test(l))],
       ['no script elements possible', v.scriptTags === 0],
       ['inline markdown rendered', v.boldText === '加粗'],
       ['restore removes host', v.hostRemovedAfterRestore],

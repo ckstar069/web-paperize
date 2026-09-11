@@ -201,11 +201,11 @@ export async function capturePage(tabId, settings, options = {}) {
       } else {
       onProgress('Loading the whole page');
       await inject(tabId, prep.primePage, [{
-        // forceGeneric promises "the currently loaded content": the
-        // scroll-through priming would load/unload virtualized history and
-        // change what the DOM holds (user-verified on ChatGPT), so it is
-        // skipped — fonts/images already in the DOM still settle.
-        scrollThrough: !options.forceGeneric,
+        // forceGeneric promises "the currently loaded content" and
+        // element/selection capture a picked region — neither should disturb
+        // the page with a full scroll-through (virtualized sites would
+        // load/unload history underneath the user).
+        scrollThrough: !(options.forceGeneric || elementScope),
         scrollDelay: settings.scrollDelay,
         imageTimeout: settings.imageTimeout,
         fontTimeout: settings.fontTimeout,
@@ -339,12 +339,15 @@ export async function capturePage(tabId, settings, options = {}) {
       if (!plan) plan = buildPlan(false);
 
       // Break rules for the materialized chat live INSIDE its shadow root —
-      // light-DOM print CSS cannot reach it (review item 3).
-      const setPrintMode = (mode) =>
-        inject(tabId, async (m) => {
+      // light-DOM print CSS cannot reach it. A failed switch must NOT be
+      // silent: without the right mode the sheet form is wrong.
+      const setPrintMode = async (mode) => {
+        const ok = await inject(tabId, async (m) => {
           const mod = await import(chrome.runtime.getURL('src/adapter/chatgpt/materialize.js'));
           return mod.setMaterializedPrintMode(m);
-        }, [mode]).catch(() => {});
+        }, [mode]);
+        if (ok !== true) throw new Error(`Failed to set the chat print mode (${mode}).`);
+      };
       if (adapterScope) await setPrintMode(oneSheet ? 'continuous' : 'paged');
 
       const paramsFor = (p) => ({
@@ -376,8 +379,7 @@ export async function capturePage(tabId, settings, options = {}) {
         oneSheet = false;
         plan = buildPlan(false);
         if (adapterScope) await setPrintMode('paged');
-        // Pagination-friendly CSS replaces the single-sheet set before reprint.
-        await inject(tabId, prep.applyPrintCss, [printCssFor(false)]);
+        // Pagination-friendly CSS replaces the single-sheet set before reprint.        await inject(tabId, prep.applyPrintCss, [printCssFor(false)]);
       };
 
       onProgress(oneSheet ? 'Rendering one continuous page' : 'Rendering PDF');

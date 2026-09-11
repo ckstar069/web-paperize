@@ -19,7 +19,7 @@ const PROBE = `(async () => {
   siteRoot.textContent = 'SITE UI SHOULD NOT PRINT';
   document.body.appendChild(siteRoot);
   beginCaptureState();
-  materializeConversation(${MODEL});
+  await materializeConversation(${MODEL});
   const isolated = isolateElement();
   const during = {
     siteRootDisplay: getComputedStyle(siteRoot).display,

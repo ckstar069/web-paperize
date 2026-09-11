@@ -1,6 +1,6 @@
 {
   "title": "fixture conversation",
-  "current_node": "n11",
+  "current_node": "n12",
   "mapping": {
     "n0": { "message": null, "parent": null },
     "n1": { "parent": "n0", "message": { "author": { "role": "user" }, "recipient": "all", "content": { "content_type": "text", "parts": ["第一问：介绍一下项目"] } } },
@@ -9,10 +9,40 @@
     "n4": { "parent": "n1", "message": { "author": { "role": "tool" }, "recipient": "all", "content": { "content_type": "text", "parts": ["工具输出不应出现"] } } },
     "n5": { "parent": "n1", "message": { "author": { "role": "assistant" }, "recipient": "all", "content": { "content_type": "text", "parts": ["被放弃的第一次回答（废分支）"] } } },
     "n6": { "parent": "n5", "message": { "author": { "role": "assistant" }, "recipient": "all", "content": { "content_type": "text", "parts": ["重新生成前的中间版本（废分支）"] } } },
-    "n7": { "parent": "n1", "message": { "author": { "role": "assistant" }, "recipient": "all", "content": { "content_type": "text", "parts": ["\uE200citeturn0search2\uE201\uE200citeturn0file0\uE201这是带引用标记\u30104\u2020(source)\u3011的回答正文。:::boundary {\"type\":\"x\"}"] } } },
-    "n8": { "parent": "n7", "message": { "author": { "role": "user" }, "recipient": "all", "content": { "content_type": "multimodal_text", "parts": ["第二问：看这张图", { "asset_pointer": "file-service://file-abc", "content_type": "image_asset_pointer" }] } } },
-    "n9": { "parent": "n8", "message": { "author": { "role": "assistant" }, "recipient": "all", "content": { "content_type": "multimodal_text", "parts": [{ "text": "结构化 parts 回答 citeturn1search1 与残留 turn0file0 token" }] }, "metadata": { "model_slug": "gpt-5" } } },
+    "n7": {
+      "parent": "n1",
+      "message": {
+        "author": { "role": "assistant" },
+        "recipient": "all",
+        "content": { "content_type": "text", "parts": ["\uE200citeturn0search2\uE201这是引用一之后的正文\uE200fileciteturn1file3\uE201，加上旧格式【1†(old-source)】引用。\n\n:::boundary {\"type\":\"x\"}\n\n收尾正文"] },
+        "metadata": {
+          "model_slug": "gpt-5",
+          "content_references": [
+            { "matched_text": "citeturn0search2", "type": "web", "name": "搜索结果甲", "url": "https://example.com/a" },
+            { "matched_text": "fileciteturn1file3", "type": "file", "name": "参考文件乙.pdf", "id": "file_abc", "cloud_doc_url": "" }
+          ],
+          "citations": [
+            { "start_ix": 0, "end_ix": 5, "citation_format_type": "site", "metadata": { "type": "web", "name": "旧格式来源丙", "url": "https://example.com/c" } }
+          ]
+        }
+      }
+    },
+    "n8": {
+      "parent": "n7",
+      "message": {
+        "author": { "role": "user" },
+        "recipient": "all",
+        "content": { "content_type": "multimodal_text", "parts": ["第二问：看这张图", { "asset_pointer": "sediment://620b#file_00000000b6a48230#p_1.jpg", "content_type": "image_asset_pointer", "size_bytes": 63472, "width": 512, "height": 1024 }] },
+        "metadata": {
+          "attachments": [
+            { "id": "file_1", "size": 515521, "name": "report.pdf", "mime_type": "application/pdf", "source": "local" }
+          ]
+        }
+      }
+    },
+    "n9": { "parent": "n8", "message": { "author": { "role": "assistant" }, "recipient": "all", "content": { "content_type": "multimodal_text", "parts": [{ "text": "结构化 parts 回答" }] }, "metadata": { "model_slug": "gpt-5" } } },
     "n10": { "parent": "n9", "message": { "author": { "role": "assistant" }, "recipient": "all", "content": { "content_type": "text", "parts": ["被隐藏的节点不应出现"] }, "metadata": { "is_visually_hidden_from_conversation": true } } },
-    "n11": { "parent": "n9", "message": { "author": { "role": "assistant" }, "recipient": "all", "content": { "content_type": "text", "parts": [""] } } }
+    "n11": { "parent": "n9", "message": { "author": { "role": "assistant" }, "recipient": "all", "content": { "content_type": "text", "parts": [""] } } },
+    "n12": { "parent": "n9", "message": { "author": { "role": "user" }, "recipient": "all", "content": { "content_type": "text", "parts": ["注意：用户手打的【重要内容】和字面 token turn0file0 必须原样保留"] } } }
   }
 }
