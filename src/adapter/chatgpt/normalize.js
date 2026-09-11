@@ -29,25 +29,57 @@ const WRAPPED = new RegExp(EO + '([\\s\\S]*?)' + EC, 'g');
 const OLD_STYLE = /【(\d+)†[^】]*】/g;
 const SKIPPED_TYPES = ['thoughts', 'reasoning_recap'];
 const IMG_FILE_ID = /file_[A-Za-z0-9]+/;
+const HTTP_URL = /^https?:\/\//i;
+
+// Internal reference types are matched by EXACT value only — a real web page
+// titled "automation guide" must never be filtered by keyword (review
+// 2026-09-11: no label/type fuzzy regex).
+const INTERNAL_REF_TYPES = new Set([
+  'suggest_automation', 'suggested_automation', 'internal', 'system', 'tool',
+]);
 
 function filePointerId(pointer) {
   const m = String(pointer || '').match(IMG_FILE_ID);
   return m ? m[0] : null;
 }
 
+function firstHttp(value) {
+  return Array.isArray(value)
+    ? String(value.find((v) => HTTP_URL.test(String(v))) || '')
+    : HTTP_URL.test(String(value || ''))
+      ? String(value)
+      : '';
+}
+
 function buildRefs(metadata) {
   const refs = [];
   const seen = new Set();
-  // Internal/automation references (e.g. suggest_automation) are not web
-  // citations and must never reach the Sources list (review 2026-09-11).
-  const INTERNAL = /suggest|automation|internal|system_/i;
   const push = (item) => {
     if (!item || typeof item !== 'object') return;
     const meta = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
-    const label = item.name || item.title || meta.name || meta.title || '';
-    const url = item.url || item.cloud_doc_url || meta.url || '';
     const type = String(item.type || meta.type || '');
-    if (INTERNAL.test(type) || INTERNAL.test(label)) return;
+    if (INTERNAL_REF_TYPES.has(type)) return; // exact-value internal filter
+
+    // v3 "grouped_webpages" (source chips): the label is the chip attribution
+    // and the URL lives in safe_urls / items — not in top-level name/url
+    // (probed 2026-09-11: this shape is why chips vanished from Sources).
+    const firstItem = Array.isArray(item.items) && item.items[0] ? item.items[0] : {};
+    const label =
+      item.attribution ||
+      firstItem.attribution ||
+      item.name ||
+      item.title ||
+      firstItem.title ||
+      meta.name ||
+      meta.title ||
+      '';
+    const url =
+      firstHttp(item.safe_urls && item.safe_urls[0]) ||
+      firstHttp(item.url) ||
+      firstHttp(item.cloud_doc_url) ||
+      firstHttp(firstItem.url) ||
+      firstHttp(meta.url) ||
+      '';
     if (!label && !url) return;
     const key = `${item.matched_text || ''}|${url}|${label}|${item.id || ''}`;
     if (seen.has(key)) return;
@@ -55,7 +87,7 @@ function buildRefs(metadata) {
     refs.push({
       matched: typeof item.matched_text === 'string' ? item.matched_text : null,
       label,
-      url: /^https?:\/\//i.test(url) ? url : '',
+      url,
     });
   };
   if (Array.isArray(metadata.content_references)) metadata.content_references.forEach(push);

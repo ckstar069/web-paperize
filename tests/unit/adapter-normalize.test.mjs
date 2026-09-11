@@ -37,14 +37,19 @@ test('citations become numbered markers with a per-message source list', () => {
   assert.ok(!m.text.includes('citeturn'), m.text);
   assert.ok(!m.text.includes('【1†'), m.text);
   assert.ok(m.text.includes('这是引用一之后的正文'));
-  assert.equal(m.sources.length, 3);
+  // v3 chips + automation-titled page + old three, in citation order
+  assert.equal(m.sources.length, 5);
   assert.ok(!JSON.stringify(m).includes('suggest_automation'));
   assert.deepEqual(
-    m.sources.map((s) => s.label),
-    ['搜索结果甲', '参考文件乙.pdf', '旧格式来源丙']
+    m.sources.map((x) => x.label),
+    ['搜索结果甲', 'Bilibili', 'Home automation system guide', '参考文件乙.pdf', '旧格式来源丙']
   );
+  assert.equal(m.sources[1].url, 'https://www.bilibili.com/video/BV1x'); // canonical safe_url, not the utm twin
+  assert.equal(m.sources[2].url, 'https://example.com/automation-guide'); // keyword-titled page survives
+  assert.match(m.text, /^\[1\]\[2\]\[3\]这是引用一之后的正文\[4\]/);
+  // v1 web ref keeps its url; the file ref (参考文件乙) has none
   assert.equal(m.sources[0].url, 'https://example.com/a');
-  assert.equal(m.sources[1].url, ''); // no usable url on the file ref
+  assert.equal(m.sources[3].url, '');
 });
 
 test('user literals 【重要内容】 and bare turn0file0 survive untouched', () => {

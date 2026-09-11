@@ -107,7 +107,7 @@
         "content": {
           "content_type": "text",
           "parts": [
-            "citeturn0search2这是引用一之后的正文fileciteturn1file3citeturn9auto，加上旧格式【1†(old-source)】引用。\n\n:::boundary {\"type\":\"x\"}\n\n收尾正文"
+            "citeturn0search2citeturn976640search3turn976640search7citeturn976640search9这是引用一之后的正文fileciteturn1file3，加上旧格式【1†(old-source)】引用。\n\n:::boundary {\"type\":\"x\"}\n\n收尾正文"
           ]
         },
         "metadata": {
@@ -131,6 +131,29 @@
               "type": "suggest_automation",
               "name": "suggest_automation",
               "id": "ref_auto_1"
+            },
+            {
+              "matched_text": "citeturn976640search3turn976640search7",
+              "type": "grouped_webpages",
+              "attribution": "Bilibili",
+              "safe_urls": [
+                "https://www.bilibili.com/video/BV1x",
+                "https://www.bilibili.com/video/BV1x?utm_source=chatgpt.com"
+              ],
+              "items": [
+                {
+                  "title": "RedmiBook BIOS 清除教程",
+                  "url": "https://www.bilibili.com/video/BV1x?utm_source=chatgpt.com",
+                  "attribution": "Bilibili"
+                }
+              ],
+              "alt": "([Bilibili](https://www.bilibili.com/video/BV1x?utm_source=chatgpt.com))"
+            },
+            {
+              "matched_text": "citeturn976640search9",
+              "type": "web",
+              "name": "Home automation system guide",
+              "url": "https://example.com/automation-guide"
             }
           ],
           "citations": [

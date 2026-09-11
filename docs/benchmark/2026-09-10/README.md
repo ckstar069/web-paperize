@@ -91,3 +91,10 @@ settings 改 storage.local；harness 路径/lazy 选择器/注释修正；三份
 4. GitHub About 带 Primer hide-sm/md（窄屏响应式迁移隐藏），窄纸打印视口触发移动断点 → 单页模式 un-hide 反制（fadd21a，真实标签页 DOM 快照离线复现验证）
 
 诊断通道沉淀：[wpz] measure（region/documentWidth 分列）+ [wpz] picked 日志 + AppleScript 登录态标签页只读探针/快照取证。
+
+## ChatGPT citation payload 形状档案（2026-09-11 登录态只读探针，诊断依据）
+
+- v1 content_references：{matched_text, type:'web'|'file', name, url?, cloud_doc_url?}
+- **v3 "grouped_webpages"（source chip 格式，本次补齐）**：{matched_text(可为多 token 拼接整串，如 `citeturn393482search8turn367824search5`), type:'grouped_webpages', attribution(chip 名，如 Bilibili/4PDA), safe_urls:[规范 URL, …utm 变体], items:[{title,url,attribution,pub_date}], alt:'([chip](url))', refs:[]}
+- citations[]（旧【N†】索引）与 attachments/image 指针形状不变
+- 内部引用按 type 精确枚举过滤（suggest_automation 等），不做关键词模糊匹配（网页标题可含 automation/system）
