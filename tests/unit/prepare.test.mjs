@@ -9,6 +9,7 @@ import * as prep from '../../src/background/prepare.js';
 // check only — it cannot catch free-variable references at runtime; those
 // are covered by the browser harness (tests/tools/build-harness.py).
 const INJECTED = [
+  'beginCaptureState',
   'measurePage',
   'primePage',
   'declutterPage',

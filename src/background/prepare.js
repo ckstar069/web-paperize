@@ -12,6 +12,28 @@
  * (lazy content that loaded, infinite-scroll growth) are not rolled back.
  */
 
+/**
+ * Initialises the capture state store so adapters can own undo state before
+ * any generic prepare step runs (adapter lifecycle, docs/V0.2_PLAN.md §1.4).
+ * Idempotent: primePage reuses the same store when the generic path follows.
+ */
+export function beginCaptureState() {
+  const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
+  if (!store.record) {
+    store.record = (el, prop, isAttr) => {
+      store.undo.push({
+        el,
+        prop,
+        isAttr: Boolean(isAttr),
+        prev: isAttr ? el.getAttribute(prop) : el.style.getPropertyValue(prop),
+        priority: isAttr ? '' : el.style.getPropertyPriority(prop),
+      });
+    };
+  }
+  if (!store.startScroll) store.startScroll = { x: window.scrollX, y: window.scrollY };
+  return true;
+}
+
 /** Measures the real painted size of the document, taking overhang into account. */
 export function measurePage() {
   const de = document.documentElement;

@@ -12,6 +12,8 @@
 
 import * as cdp from './cdp.js';
 import * as prep from './prepare.js';
+import { getAdapter } from '../adapter/index.js';
+import { acquireConversation } from '../adapter/chatgpt/acquire.js';
 import {
   paperInches,
   marginInches,
@@ -140,9 +142,48 @@ export async function capturePage(tabId, settings, options = {}) {
         features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
       });
 
+      const adapterId = getAdapter(startUrl);
+      const adapterScope = adapterId !== null;
       const elementScope = scope === 'element' || scope === 'selection';
-      const singleSheetRequested = elementScope || Boolean(settings.singlePage);
+      const singleSheetRequested = elementScope || adapterScope || Boolean(settings.singlePage);
+      let region = null;
+      const printCssFor = (oneSheet) =>
+        elementScope
+          ? BASE_CSS + NO_BREAK_CSS + ISOLATED_SCOPE_CSS
+          : oneSheet
+            ? BASE_CSS + NO_BREAK_CSS
+            : BASE_CSS + (settings.avoidBreaks ? BREAK_CSS : '');
 
+      if (adapterScope) {
+        // Complete-content adapter: the virtualized site DOM never yields the
+        // full conversation, so the generic prime/declutter path is skipped
+        // entirely (docs/V0.2_PLAN.md §1.4 lifecycle). Failure is explicit —
+        // never a silent fallback to a possibly-partial generic export.
+        onProgress('Reading the complete conversation');
+        await inject(tabId, prep.beginCaptureState);
+        const model = await inject(tabId, acquireConversation);
+        if (!model || model.error) {
+          throw new Error(
+            `Complete-chat export failed: ${model ? model.error : 'no result'}. ` +
+              'No PDF was generated — try again, or use a normal page export if a partial export is acceptable.'
+          );
+        }
+        onProgress('Building the printable document');
+        const built = await inject(tabId, async (m) => {
+          const mod = await import(chrome.runtime.getURL('src/adapter/chatgpt/materialize.js'));
+          return mod.materializeConversation(m);
+        }, [model]);
+        if (!built) throw new Error('Failed to build the printable conversation document.');
+        await new Promise((r) => setTimeout(r, 150)); // let the shadow DOM settle
+        region = await inject(tabId, prep.measureTarget);
+        if (!region) throw new Error('The materialized document could not be measured.');
+        console.log('[wpz] chatgpt adapter:', {
+          messages: model.messages.length,
+          regionWidth: Math.round(region.width),
+          regionHeight: Math.round(region.height),
+        });
+        await inject(tabId, prep.applyPrintCss, [BASE_CSS + NO_BREAK_CSS]);
+      } else {
       onProgress('Loading the whole page');
       await inject(tabId, prep.primePage, [{
         scrollThrough: true,
@@ -163,7 +204,6 @@ export async function capturePage(tabId, settings, options = {}) {
       // visible, journalled for restore.
       await inject(tabId, prep.forceContentVisibility);
 
-      let region = null;
       if (scope === 'selection') {
         onProgress('Isolating the selection');
         const ok = await inject(tabId, prep.isolateSelection);
@@ -193,13 +233,8 @@ export async function capturePage(tabId, settings, options = {}) {
         console.log('[wpz] picked:', pickedInfo);
       }
 
-      const printCssFor = (oneSheet) =>
-        elementScope
-          ? BASE_CSS + NO_BREAK_CSS + ISOLATED_SCOPE_CSS
-          : oneSheet
-            ? BASE_CSS + NO_BREAK_CSS
-            : BASE_CSS + (settings.avoidBreaks ? BREAK_CSS : '');
       await inject(tabId, prep.applyPrintCss, [printCssFor(singleSheetRequested)]);
+      } // end generic (non-adapter) path
 
       onProgress('Measuring');
       let metrics = await inject(tabId, prep.measurePage);
@@ -211,7 +246,7 @@ export async function capturePage(tabId, settings, options = {}) {
       // layout widens (measured on the fixture: R(v) = v/2 + c, deltas halve
       // every step). Walk the viewport out until the document stops growing,
       // then fit-shrink THAT (element scopes skip it: the sheet is the element).
-      if (settings.fitWidth && !elementScope && metrics.width > metrics.viewportWidth * 1.02) {
+      if (settings.fitWidth && !elementScope && !adapterScope && metrics.width > metrics.viewportWidth * 1.02) {
         let width = metrics.width;
         for (let i = 0; i < 8; i += 1) {
           await cdp
@@ -260,7 +295,7 @@ export async function capturePage(tabId, settings, options = {}) {
           : settings.orientation;
 
       const buildPlan = (oneSheet) => {
-        const base = elementScope && oneSheet
+        const base = (elementScope || adapterScope) && oneSheet
           ? { ...settings, paper: 'fit', orientation: 'portrait' }
           : { ...settings, orientation };
         let paper = paperInches(base, contentWidth);
@@ -275,7 +310,7 @@ export async function capturePage(tabId, settings, options = {}) {
           if (!heightIn || !fitsSafeDimensions({ ...paper, height: heightIn })) return null;
           paper = { ...paper, height: heightIn };
         }
-        return { paper, scale, orientation: oneSheet && elementScope ? 'portrait' : orientation };
+        return { paper, scale, orientation: oneSheet && (elementScope || adapterScope) ? 'portrait' : orientation };
       };
 
       let fallbackReason = null;
