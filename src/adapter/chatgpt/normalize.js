@@ -38,11 +38,16 @@ function filePointerId(pointer) {
 function buildRefs(metadata) {
   const refs = [];
   const seen = new Set();
+  // Internal/automation references (e.g. suggest_automation) are not web
+  // citations and must never reach the Sources list (review 2026-09-11).
+  const INTERNAL = /suggest|automation|internal|system_/i;
   const push = (item) => {
     if (!item || typeof item !== 'object') return;
     const meta = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
     const label = item.name || item.title || meta.name || meta.title || '';
     const url = item.url || item.cloud_doc_url || meta.url || '';
+    const type = String(item.type || meta.type || '');
+    if (INTERNAL.test(type) || INTERNAL.test(label)) return;
     if (!label && !url) return;
     const key = `${item.matched_text || ''}|${url}|${label}|${item.id || ''}`;
     if (seen.has(key)) return;

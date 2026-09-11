@@ -461,7 +461,7 @@ export function isolateSelection() {
 
   const holder = document.createElement('div');
   holder.setAttribute('data-wpz-holder', '');
-  holder.style.cssText = 'padding:0;margin:0;background:#fff;';
+  holder.style.cssText = 'padding:10px;margin:0;background:#fff;'; // 10px gutter: CJK glyph paint exceeds the layout box slightly and a tight fit sheet clipped the first character (user-verified);
   for (let i = 0; i < selection.rangeCount; i += 1) {
     holder.appendChild(selection.getRangeAt(i).cloneContents());
   }

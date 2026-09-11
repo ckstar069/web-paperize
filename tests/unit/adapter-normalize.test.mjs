@@ -38,6 +38,7 @@ test('citations become numbered markers with a per-message source list', () => {
   assert.ok(!m.text.includes('【1†'), m.text);
   assert.ok(m.text.includes('这是引用一之后的正文'));
   assert.equal(m.sources.length, 3);
+  assert.ok(!JSON.stringify(m).includes('suggest_automation'));
   assert.deepEqual(
     m.sources.map((s) => s.label),
     ['搜索结果甲', '参考文件乙.pdf', '旧格式来源丙']

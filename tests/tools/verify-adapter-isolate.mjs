@@ -27,8 +27,20 @@ const PROBE = `(async () => {
     docWidth: Math.round(document.documentElement.getBoundingClientRect().width),
     regionH: Math.round(isolated.height),
   };
+  // selection safety gutter (CJK first-glyph clipping fix)
+  const p2 = document.createElement('p');
+  p2.textContent = '实际工程能力 ≈ Model × Harness × Project Legibility × Feedback Quality';
+  document.body.appendChild(p2);
+  const range2 = document.createRange();
+  range2.selectNodeContents(p2);
+  const sel2 = window.getSelection();
+  sel2.removeAllRanges();
+  sel2.addRange(range2);
+  const okSel2 = isolateSelection();
+  const holder2 = document.querySelector('[data-wpz-holder]');
+  const gutter = holder2 ? getComputedStyle(holder2).paddingTop : '0';
   restorePage();
-  const after = { siteRootDisplay: getComputedStyle(siteRoot).display, hostGone: !document.querySelector('[data-wpz-materialized]') };
+  const after = { siteRootDisplay: getComputedStyle(siteRoot).display, hostGone: !document.querySelector('[data-wpz-materialized]'), selectionGutter: gutter, selectionOk: okSel2 === true };
   return JSON.stringify({ during, after });
 })()`;
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, '--user-data-dir=/tmp/wpz-adiso/profile', '--no-first-run', '--window-size=1280,950', 'about:blank'], { stdio: 'ignore' });
@@ -47,6 +59,7 @@ try {
       ['materialized host visible with content', v.during.hostVisible && v.during.regionH > 30],
       ['doc shrunk to chat width (~800)', v.during.docWidth >= 780 && v.during.docWidth <= 860],
       ['restore: site root back, host removed', v.after.siteRootDisplay !== 'none' && v.after.hostGone],
+    ['selection holder has safety gutter', v.after.selectionOk && parseInt(v.after.selectionGutter, 10) >= 6],
     ];
     for (const [n, ok] of checks) { console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}`); if (!ok) failed = 1; }
     console.log(JSON.stringify(v));

@@ -132,6 +132,9 @@ function appendSources(turn, sources) {
       a.href = source.url;
       a.rel = 'noopener noreferrer';
       a.textContent = source.label || source.url;
+      // Belt and braces: the clickable annotation is verified to work, but
+      // the URL also stays visible/copyable in viewers that ignore links.
+      if (source.label) row.appendChild(document.createTextNode(` — ${source.url}`));
     } else {
       row.appendChild(document.createTextNode(source.label || '(unnamed source)'));
     }
