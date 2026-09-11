@@ -77,6 +77,16 @@ export function countPdfPages(bytes) {
 }
 
 /**
+ * Product-safe page dimension cap, both axes. PDF's default user space
+ * recommendation is 14400 units (200in) and Chrome emits no /UserUnit, so
+ * oversize in EITHER width or height steps outside verified-interoperable
+ * territory (docs/benchmark/2026-09-10-height-limit.md).
+ */
+export function fitsSafeDimensions(paper) {
+  return paper.width <= MAX_CONTINUOUS_INCHES && paper.height <= MAX_CONTINUOUS_INCHES;
+}
+
+/**
  * Height of a single continuous sheet for the given content, or null when the
  * content would exceed the product-safe cap (caller falls back to pagination).
  */

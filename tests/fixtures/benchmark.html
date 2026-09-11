@@ -86,6 +86,15 @@
   </div>
 
   <h2 id="section-details">折叠区域 details</h2>
+
+  <div class="cv-auto" style="content-visibility: auto; contain-intrinsic-size: auto 500px;">
+    <p><strong>CV-AUTO-MARKER</strong>：本块声明 content-visibility:auto。屏幕上可见，但 Chromium 打印管线会跳过这类子树——导出时插件应把 auto 临时翻为 visible（此标记必须出现在 PDF 中），并在导出后恢复原样。</p>
+  </div>
+
+  <div class="cv-hidden" style="content-visibility: hidden;">
+    <p><strong>CV-HIDDEN-MARKER</strong>：本块声明 content-visibility:hidden，是页面有意跳过渲染的内容。导出时必须保持隐藏（此标记不得出现在 PDF 中）。</p>
+  </div>
+
   <details>
     <summary>折叠的第一段内容（导出时应被展开）</summary>
     <p>折叠内容 A：这段文字在屏幕上默认不可见，导出 PDF 必须包含它。A collapsed details block must be opened before printing, and restored afterwards.</p>

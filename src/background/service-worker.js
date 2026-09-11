@@ -69,9 +69,8 @@ async function runCapture(tab, { scope = 'page', overrides = null } = {}) {
       message = 'Export interrupted: the tab was closed.';
     } else if (detachReason === 'canceled_by_user') {
       message = 'Export interrupted: the debugging bar was dismissed.';
-    } else if (detachReason === 'replaced_with_devtools') {
-      message = 'Export interrupted: DevTools was opened for this tab.';
     } else if (detachReason) {
+      // Unknown/unenumerated reason: stay accurate rather than guessing.
       message = 'Export interrupted: the debugging session ended unexpectedly.';
     }
     setBadge('ERR', '#dc2626');
@@ -88,6 +87,9 @@ async function runCapture(tab, { scope = 'page', overrides = null } = {}) {
 async function startPicker(tab) {
   if (!tab || !capturable(tab.url)) {
     throw new Error('The picker cannot run on this page.');
+  }
+  if (busyTabs.has(tab.id)) {
+    throw new Error('This tab is already being exported.');
   }
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },
@@ -179,10 +181,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-chrome.debugger.onDetach.addListener((source) => {
+chrome.debugger.onDetach.addListener((source, reason) => {
   // Mark only, never release busy state here (ARCHITECTURE §3.6); keep the
-  // reason so the error copy can say what actually happened.
+  // reason so the error copy can say what actually happened. Chrome passes
+  // the DetachReason as the second argument (target_closed / canceled_by_user).
   if (source && typeof source.tabId === 'number') {
-    detachedExternally.set(source.tabId, source.reason || 'unknown');
+    detachedExternally.set(source.tabId, reason || 'unknown');
   }
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 // capture.js has no top-level chrome access, so importing it in Node is safe.
-import { BASE_CSS, BREAK_CSS, NO_BREAK_CSS } from '../../src/background/capture.js';
+import { BASE_CSS, BREAK_CSS, NO_BREAK_CSS, ISOLATED_SCOPE_CSS } from '../../src/background/capture.js';
 
 test('print CSS wraps long code instead of clipping it', () => {
   assert.match(BASE_CSS, /pre\s*\{[^}]*white-space:\s*pre-wrap/);
@@ -14,8 +14,10 @@ test('print CSS keeps exact colors and stills animations', () => {
   assert.match(BASE_CSS, /animation-play-state:\s*paused/);
 });
 
-test('print CSS neutralises content-visibility (Chromium print skip bug)', () => {
-  assert.match(BASE_CSS, /content-visibility:\s*visible/);
+test('content-visibility handling moved out of global CSS (review item 2)', () => {
+  // The targeted pass (prepare.forceContentVisibility) flips only computed
+  // `auto`; the blanket `* { content-visibility: visible }` is gone.
+  assert.doesNotMatch(BASE_CSS, /content-visibility/);
 });
 
 test('break CSS protects blocks and repeats table headers', () => {
@@ -25,12 +27,12 @@ test('break CSS protects blocks and repeats table headers', () => {
 
 test('single-sheet mode resets every forced break property', () => {
   for (const prop of ['break-before', 'break-after', 'break-inside', 'page-break-before', 'page-break-after', 'page-break-inside']) {
-    assert.match(NO_BREAK_CSS, new RegExp(`${prop.replace('-', '-')}\\s*:\\s*auto`));
+    assert.match(NO_BREAK_CSS, new RegExp(`${prop}\\s*:\\s*auto`));
   }
 });
 
-test('single-sheet mode un-hides responsive relocate utilities on narrow sheets', () => {
-  assert.match(NO_BREAK_CSS, /\[class\*='hide-sm'\]/);
-  assert.match(NO_BREAK_CSS, /\[class\*='hide-md'\]/);
-  assert.match(NO_BREAK_CSS, /display:\s*revert/);
+test('responsive hide workaround is isolated-scope only, exact class tokens', () => {
+  assert.match(ISOLATED_SCOPE_CSS, /\.hide-sm\s*,\s*\.hide-md\s*\{/);
+  assert.doesNotMatch(ISOLATED_SCOPE_CSS, /\[/); // no attribute-substring selectors
+  assert.doesNotMatch(NO_BREAK_CSS, /hide-sm|hide-md/);
 });

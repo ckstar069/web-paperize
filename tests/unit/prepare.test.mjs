@@ -13,6 +13,7 @@ const INJECTED = [
   'primePage',
   'declutterPage',
   'expandContent',
+  'forceContentVisibility',
   'applyPrintCss',
   'measureTarget',
   'isolateElement',

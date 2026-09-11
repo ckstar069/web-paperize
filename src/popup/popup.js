@@ -14,7 +14,9 @@ function send(message) {
 
 function setBusy(next) {
   busy = next;
-  save.disabled = next || (state.tab && !state.tab.capturable);
+  const blocked = next || (state.tab && !state.tab.capturable);
+  save.disabled = blocked;
+  $('pick').disabled = blocked;
   if (!next) save.textContent = 'Save as PDF';
 }
 

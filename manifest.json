@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "web-paperize",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Save the current page as a vector PDF rendered by Chrome itself. Local only, no telemetry.",
   "minimum_chrome_version": "116",
   "permissions": [

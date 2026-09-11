@@ -217,6 +217,38 @@ export function declutterPage(options) {
   return true;
 }
 
+/**
+ * Flips content-visibility:auto to visible for printing. Chromium's print
+ * pipeline skips auto subtrees even when they are fully visible on screen
+ * (GitHub's sidebar About vanished from PDFs this way). Sites' deliberate
+ * content-visibility: hidden keeps its skip semantics — only auto is touched,
+ * and every flip is journalled for restorePage().
+ */
+export function forceContentVisibility() {
+  const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
+  const record =
+    store.record ||
+    ((el, prop, isAttr) => {
+      store.undo.push({
+        el,
+        prop,
+        isAttr: Boolean(isAttr),
+        prev: isAttr ? el.getAttribute(prop) : el.style.getPropertyValue(prop),
+        priority: isAttr ? '' : el.style.getPropertyPriority(prop),
+      });
+    });
+  store.record = record;
+  let flipped = 0;
+  for (const el of document.body ? document.body.querySelectorAll('*') : []) {
+    if (!(el instanceof HTMLElement) && !(el instanceof SVGElement)) continue;
+    if (getComputedStyle(el).contentVisibility !== 'auto') continue;
+    record(el, 'content-visibility');
+    el.style.setProperty('content-visibility', 'visible', 'important');
+    flipped += 1;
+  }
+  return flipped;
+}
+
 /** Opens collapsed regions and expands inner scroll panes. */
 export function expandContent() {
   const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
@@ -418,7 +450,9 @@ export function isolateSelection() {
 
   store.injected.push(holder);
   store.pickedElement = holder;
-  selection.removeAllRanges();
+  // The user's selection stays put: Chrome's print output does not include
+  // the selection highlight, and clearing it would be an unrestorable UI
+  // change (review 2026-09-10, item 6).
   return true;
 }
 

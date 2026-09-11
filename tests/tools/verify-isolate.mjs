@@ -7,10 +7,10 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const CHROME = process.env.CHROME_BIN || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = 9334;
 const PROFILE = mkdtempSync(join(tmpdir(), 'wpz-verify-'));
-const PAGE = 'file:///tmp/zcode-v01-impl/harness.html';
+const PAGE = process.env.HARNESS || "file:///tmp/zcode-v01-impl/harness.html";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

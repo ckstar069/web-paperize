@@ -4,19 +4,20 @@
  * layout stays the one on screen, yet the output is real vector text with
  * selectable characters and live links.
  *
- * Ordering constraint (audit §1.3/§1.4, upstream observation): height-changing
- * preparation finishes BEFORE measuring, and the experimental viewport walk
- * (horizontal overflow only) also precedes the fit-scale computation.
+ * Print plans are built explicitly (single-sheet vs paginated). A single-sheet
+ * plan that comes back split — or fails with a sheet-dimension error — is
+ * REPLACED by a freshly built paginated plan (new paper, scale, and CSS), not
+ * patched field by field (review 2026-09-10, item 1).
  */
 
 import * as cdp from './cdp.js';
 import * as prep from './prepare.js';
 import {
-  PAPER_SIZES,
   paperInches,
   marginInches,
   computeFitScale,
   continuousPaperHeight,
+  fitsSafeDimensions,
   countPdfPages,
   CSS_PX_PER_INCH,
 } from './util.js';
@@ -24,19 +25,13 @@ import { base64ChunksToBytes, base64ToBytes } from './download.js';
 
 export const BASE_CSS = `
   * { animation-play-state: paused !important; transition: none !important; }
-  /* Chromium's print pipeline skips content-visibility:auto subtrees even when
-     they are visible on screen (seen on GitHub's sidebar: the About heading and
-     description exist in the DOM, render on screen, and vanish from the PDF).
-     Printing must render everything, so neutralise the lazy-rendering hint. */
-  * { content-visibility: visible !important; }
   html { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   ::-webkit-scrollbar { display: none !important; }
   html, body { scrollbar-width: none !important; }
   /* Paper has no horizontal scroll: long code lines wrap instead of clipping. */
   pre { white-space: pre-wrap !important; overflow-wrap: anywhere !important; }
   /* The picker UI must never print, even when a second picker session was
-     opened mid-capture (its elements are injected after isolation hid the
-     first set — this belt catches any [data-wpz-ui] node at print time). */
+     opened mid-capture. */
   [data-wpz-ui] { display: none !important; }
 `;
 
@@ -52,7 +47,8 @@ export const BREAK_CSS = `
 /**
  * Single-sheet mode is the opposite of pagination: any forced break — ours or
  * the site's — could push content onto a phantom second page even when
- * paperHeight was computed exactly, so all break properties reset to auto.
+ * paperHeight was computed exactly. Break resets only; hide-workarounds live
+ * in ISOLATED_SCOPE_CSS.
  */
 export const NO_BREAK_CSS = `
   * {
@@ -63,14 +59,20 @@ export const NO_BREAK_CSS = `
     page-break-after: auto !important;
     page-break-inside: auto !important;
   }
-  /* Narrow sheets print with a narrow media-query viewport, which trips the
-     responsive hide utilities sites use when content relocates on mobile
-     (GitHub's sidebar About carries hide-sm hide-md and vanished from
-     element exports). Single-sheet exports print an isolated subtree, so the
-     relocated copy is never in it — un-hide the utilities instead. Verified
-     against a snapshot of the real page. */
+`;
+
+/**
+ * Only for isolated Element/Selection exports. Narrow sheets print with a
+ * narrow media-query viewport, which trips the responsive hide utilities sites
+ * use when content relocates on mobile (GitHub's sidebar About carries
+ * hide-sm hide-md and vanished from element exports). An isolated subtree
+ * never contains the relocated copy, so un-hiding cannot duplicate content —
+ * a whole-page continuous export does NOT get this rule for exactly that
+ * reason. Exact class tokens, not substrings.
+ */
+export const ISOLATED_SCOPE_CSS = `
   @media (max-width: 767px) {
-    [class*='hide-sm'], [class*='hide-md'] { display: revert !important; }
+    .hide-sm, .hide-md { display: revert !important; }
   }
 `;
 
@@ -98,44 +100,48 @@ export async function capturePage(tabId, settings, options = {}) {
   const scope = options.scope || 'page';
   return cdp.withDebugger(tabId, async () => {
     const startUrl = await inject(tabId, () => location.href);
-    // Tab zoom leaks into printToPDF (measured 2026-09-10: MDN 8 -> 13 pages,
-    // GitHub vscode 2 -> 4). Normalise to 100% for the capture and restore
-    // afterwards. Chrome's default zoom scope is per-ORIGIN, so a plain
-    // setZoom would also re-zoom other tabs of the same site and rewrite the
-    // zoom Chrome remembers for that origin — switch this tab to per-tab
-    // scope first, and restore both zoom and scope when done.
+    // Everything below — including the zoom normalisation itself — lives
+    // inside the try whose finally restores zoom/scope: no state change may
+    // happen outside the reach of its restoration owner (review item 4).
     let originalZoom = 1;
     let originalZoomSettings = null;
     let zoomTouched = false;
-    try {
-      originalZoom = (await chrome.tabs.getZoom(tabId)) || 1;
-    } catch {
-      originalZoom = 1;
-    }
-    const needZoomNormalise =
-      Number.isFinite(originalZoom) && originalZoom > 0 && originalZoom !== 1;
-    if (needZoomNormalise) {
-      try {
-        originalZoomSettings = await chrome.tabs.getZoomSettings(tabId);
-        await chrome.tabs.setZoomSettings(tabId, { scope: 'per-tab' });
-        zoomTouched = true;
-        await chrome.tabs.setZoom(tabId, 1);
-      } catch {
-        // Zoom normalisation is a verified correctness condition for the PDF;
-        // failing silently would produce a wrong document.
-        throw new Error(
-          'Could not normalise the page zoom for export. Set the tab zoom to 100% and try again.'
-        );
-      }
-      await new Promise((r) => setTimeout(r, 150)); // let the reflow settle
-    }
     let overrodeViewport = false;
     try {
+      // Tab zoom leaks into printToPDF (measured 2026-09-10: MDN 8 -> 13
+      // pages, GitHub vscode 2 -> 4). Normalise to 100% for the capture and
+      // restore afterwards. Chrome's default zoom scope is per-ORIGIN, so a
+      // plain setZoom would also re-zoom other tabs of the same site — switch
+      // this tab to per-tab scope first, and restore both when done.
+      originalZoom = (await chrome.tabs.getZoom(tabId).catch(() => 1)) || 1;
+      const needZoomNormalise =
+        Number.isFinite(originalZoom) && originalZoom > 0 && originalZoom !== 1;
+      if (needZoomNormalise) {
+        try {
+          originalZoomSettings = await chrome.tabs.getZoomSettings(tabId);
+          await chrome.tabs.setZoomSettings(tabId, { scope: 'per-tab' });
+          zoomTouched = true;
+          await chrome.tabs.setZoom(tabId, 1);
+        } catch {
+          // Zoom normalisation is a verified correctness condition for the
+          // PDF; failing silently would produce a wrong document. zoomTouched
+          // is already set once the scope switched, so the finally below
+          // restores it even on this throw.
+          throw new Error(
+            'Could not normalise the page zoom for export. Set the tab zoom to 100% and try again.'
+          );
+        }
+        await new Promise((r) => setTimeout(r, 150)); // let the reflow settle
+      }
+
       await cdp.send(tabId, 'Page.enable').catch(() => {});
       await cdp.send(tabId, 'Emulation.setEmulatedMedia', {
         media: 'screen',
         features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
       });
+
+      const elementScope = scope === 'element' || scope === 'selection';
+      const singleSheetRequested = elementScope || Boolean(settings.singlePage);
 
       onProgress('Loading the whole page');
       await inject(tabId, prep.primePage, [{
@@ -152,14 +158,10 @@ export async function capturePage(tabId, settings, options = {}) {
       if (settings.expandScrollers !== false) {
         await inject(tabId, prep.expandContent);
       }
-
-      // Element/selection sheets are single sheets by definition; a continuous
-      // page asks for one. Either way pagination-friendly CSS must NOT apply.
-      const elementScope = scope === 'element' || scope === 'selection';
-      const singleSheet = elementScope || Boolean(settings.singlePage);
-      await inject(tabId, prep.applyPrintCss, [
-        BASE_CSS + (singleSheet ? NO_BREAK_CSS : settings.avoidBreaks ? BREAK_CSS : ''),
-      ]);
+      // content-visibility:auto subtrees are skipped by Chromium's print
+      // pipeline even when visible on screen; flip auto (only auto) to
+      // visible, journalled for restore.
+      await inject(tabId, prep.forceContentVisibility);
 
       let region = null;
       if (scope === 'selection') {
@@ -191,6 +193,14 @@ export async function capturePage(tabId, settings, options = {}) {
         console.log('[wpz] picked:', pickedInfo);
       }
 
+      const printCssFor = (oneSheet) =>
+        elementScope
+          ? BASE_CSS + NO_BREAK_CSS + ISOLATED_SCOPE_CSS
+          : oneSheet
+            ? BASE_CSS + NO_BREAK_CSS
+            : BASE_CSS + (settings.avoidBreaks ? BREAK_CSS : '');
+      await inject(tabId, prep.applyPrintCss, [printCssFor(singleSheetRequested)]);
+
       onProgress('Measuring');
       let metrics = await inject(tabId, prep.measurePage);
       if (!metrics || !metrics.height) {
@@ -199,9 +209,8 @@ export async function capturePage(tabId, settings, options = {}) {
 
       // Wide content inside a centred container keeps sliding right as the
       // layout widens (measured on the fixture: R(v) = v/2 + c, deltas halve
-      // every step). A single measurement under-shoots that fixed point, so
-      // the table still fell off the sheet even with scale headroom. Walk the
-      // viewport out until the document stops growing, then fit-shrink THAT.
+      // every step). Walk the viewport out until the document stops growing,
+      // then fit-shrink THAT (element scopes skip it: the sheet is the element).
       if (settings.fitWidth && !elementScope && metrics.width > metrics.viewportWidth * 1.02) {
         let width = metrics.width;
         for (let i = 0; i < 8; i += 1) {
@@ -223,9 +232,6 @@ export async function capturePage(tabId, settings, options = {}) {
         }
       }
 
-      // Measurement log (docs/V0.1_SCOPE.md §4 zoom experiments): captures are
-      // normalised to 100% zoom, so this records the original zoom for the
-      // record and the post-normalisation measurements the scale is based on.
       let zoom = 1;
       try {
         zoom = (await chrome.tabs.getZoom(tabId)) || 1;
@@ -242,47 +248,48 @@ export async function capturePage(tabId, settings, options = {}) {
         zoom,
       });
 
-      // ── Sheet plan ────────────────────────────────────────────────
+      // ── Print plans ───────────────────────────────────────────────
+      const margin = marginInches(settings);
       const contentWidth = region ? region.width : metrics.width;
       const contentHeight = region ? region.height : metrics.height;
       const orientation =
-        !singleSheet && settings.orientation === 'auto'
-          ? metrics.width > metrics.height && metrics.width > 960
+        settings.orientation === 'auto'
+          ? contentWidth > contentHeight && contentWidth > 960
             ? 'landscape'
             : 'portrait'
-          : singleSheet
-            ? 'portrait'
-            : settings.orientation;
-      // Element/selection sheets are cut to the content; continuous pages keep
-      // the user's paper width.
-      const effective = elementScope
-        ? { ...settings, paper: 'fit', orientation: 'portrait' }
-        : { ...settings, orientation };
-      const paper = paperInches(effective, contentWidth);
-      const margin = marginInches(settings);
-      const printableWidthPx = Math.max(1, paper.width - margin * 2) * CSS_PX_PER_INCH;
-      const scale = settings.fitWidth !== false ? computeFitScale(contentWidth, printableWidthPx) : 1;
+          : settings.orientation;
 
-      let paperHeight = paper.height;
-      let oneSheet = false;
-      if (singleSheet) {
-        const heightIn = continuousPaperHeight(contentHeight, scale, margin);
-        if (heightIn) {
-          paperHeight = heightIn;
-          oneSheet = true;
-        } else {
-          // Above the product-safe cap: fall back to pagination, say so.
-          onProgress('Content is too tall for one sheet — paginating instead');
+      const buildPlan = (oneSheet) => {
+        const base = elementScope && oneSheet
+          ? { ...settings, paper: 'fit', orientation: 'portrait' }
+          : { ...settings, orientation };
+        let paper = paperInches(base, contentWidth);
+        let scale = settings.fitWidth !== false
+          ? computeFitScale(contentWidth, Math.max(1, paper.width - margin * 2) * CSS_PX_PER_INCH)
+          : 1;
+        if (oneSheet) {
+          const heightIn = continuousPaperHeight(contentHeight, scale, margin);
+          // The product-safe cap is two-dimensional: an oversize fit WIDTH
+          // (e.g. a 1600px table) must paginate exactly like an oversize
+          // height, or the paginated sheet would cut it sideways.
+          if (!heightIn || !fitsSafeDimensions({ ...paper, height: heightIn })) return null;
+          paper = { ...paper, height: heightIn };
         }
-      }
+        return { paper, scale, orientation: oneSheet && elementScope ? 'portrait' : orientation };
+      };
 
-      onProgress(oneSheet ? 'Rendering one continuous page' : 'Rendering PDF');
-      const params = {
-        landscape: orientation === 'landscape',
+      let fallbackReason = null;
+      let plan = singleSheetRequested ? buildPlan(true) : null;
+      let oneSheet = Boolean(plan);
+      if (singleSheetRequested && !plan) fallbackReason = 'oversize';
+      if (!plan) plan = buildPlan(false);
+
+      const paramsFor = (p) => ({
+        landscape: p.orientation === 'landscape',
         printBackground: settings.printBackground !== false,
-        scale: Number(scale.toFixed(4)),
-        paperWidth: paper.width,
-        paperHeight,
+        scale: Number(p.scale.toFixed(4)),
+        paperWidth: p.paper.width,
+        paperHeight: p.paper.height,
         marginTop: margin,
         marginBottom: margin,
         marginLeft: margin,
@@ -293,42 +300,61 @@ export async function capturePage(tabId, settings, options = {}) {
         footerTemplate: '<span></span>',
         transferMode: 'ReturnAsStream',
         generateTaggedPDF: true,
-      };
-      const print = () => cdp.send(tabId, 'Page.printToPDF', params);
-      let result;
-      try {
-        result = await print();
-      } catch (err) {
-        // Retry only for the documented compatibility case: older Chromium
-        // builds reject the generateTaggedPDF parameter itself. Everything
-        // else (debugger detached, target closed, engine failure) must
-        // surface as-is instead of printing a second time.
-        const message = err && err.message ? err.message : '';
-        if (!/generateTaggedPDF|Invalid parameters/i.test(message)) throw err;
-        delete params.generateTaggedPDF;
-        result = await print();
-      }
-      const toBytes = async () =>
+      });
+
+      const readBytes = async (result) =>
         result.stream
           ? base64ChunksToBytes(await cdp.readStream(tabId, result.stream))
           : base64ToBytes(result.data);
-      let bytes = await toBytes();
+
+      const paginateInstead = async (reason) => {
+        onProgress('Content does not fit one sheet — paginating instead');
+        fallbackReason = reason;
+        oneSheet = false;
+        plan = buildPlan(false);
+        // Pagination-friendly CSS replaces the single-sheet set before reprint.
+        await inject(tabId, prep.applyPrintCss, [printCssFor(false)]);
+      };
+
+      onProgress(oneSheet ? 'Rendering one continuous page' : 'Rendering PDF');
+      let params = paramsFor(plan);
+      let result;
+      let bytes = null;
+      try {
+        result = await cdp.send(tabId, 'Page.printToPDF', params);
+      } catch (err) {
+        const message = err && err.message ? err.message : '';
+        if (/generateTaggedPDF|Invalid parameters/i.test(message)) {
+          // Older Chromium builds reject the parameter itself: retry once
+          // without it, same plan.
+          delete params.generateTaggedPDF;
+          result = await cdp.send(tabId, 'Page.printToPDF', params);
+        } else if (oneSheet && /Printing failed/i.test(message)) {
+          // A confirmed sheet-dimension/rendering failure of the single-sheet
+          // plan: rebuild as a paginated plan. Debugger detach, target closed
+          // and everything else surfaces as-is.
+          await paginateInstead('print-failed');
+          params = paramsFor(plan);
+          result = await cdp.send(tabId, 'Page.printToPDF', params);
+        } else {
+          throw err;
+        }
+      }
+      bytes = await readBytes(result);
 
       // A single sheet can still come back split: the content reflows at the
       // print layout width (seen on a selection export: a 2.9in sheet arrived
-      // as 6 pages). Detect and reprint paginated instead of shipping slices.
+      // as 6 pages). Detect and reprint from a fresh paginated plan.
       if (oneSheet && countPdfPages(bytes) > 1) {
-        onProgress('Content reflowed past one sheet — paginating instead');
-        delete params.generateTaggedPDF;
-        params.paperWidth = PAPER_SIZES.a4.width;
-        params.paperHeight = PAPER_SIZES.a4.height;
-        params.landscape = false;
-        result = await print();
-        bytes = await toBytes();
+        await paginateInstead('reflowed');
+        params = paramsFor(plan);
+        result = await cdp.send(tabId, 'Page.printToPDF', params);
+        bytes = await readBytes(result);
       }
+
       return {
         bytes,
-        metrics: { ...metrics, zoom, orientation, scale, scope, oneSheet },
+        metrics: { ...metrics, zoom, orientation: plan.orientation, scale: plan.scale, scope, oneSheet, fallbackReason },
       };
     } finally {
       // Navigation during the capture destroys the isolated world (and with it

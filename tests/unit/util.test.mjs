@@ -8,12 +8,19 @@ import {
   paperInches,
   marginInches,
   continuousPaperHeight,
+  fitsSafeDimensions,
   countPdfPages,
   clamp,
   computeFitScale,
   sanitizeFilename,
   buildFilename,
 } from '../../src/background/util.js';
+
+test('product-safe cap is two-dimensional', () => {
+  assert.equal(fitsSafeDimensions({ width: 8.27, height: 199 }), true);
+  assert.equal(fitsSafeDimensions({ width: 8.27, height: 201 }), false); // tall
+  assert.equal(fitsSafeDimensions({ width: 210, height: 11 }), false); // wide (fit table)
+});
 
 test('countPdfPages counts page objects without counting the page tree', () => {
   const page = (s) => new TextEncoder().encode(s);
