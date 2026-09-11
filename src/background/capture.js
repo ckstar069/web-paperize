@@ -175,6 +175,13 @@ export async function capturePage(tabId, settings, options = {}) {
         }, [model]);
         if (!built) throw new Error('Failed to build the printable conversation document.');
         await new Promise((r) => setTimeout(r, 150)); // let the shadow DOM settle
+        // The site DOM sits before the host in the document flow and would
+        // print as PDF page 1 (user-verified on two long conversations) —
+        // isolate the host exactly like an element pick so only the
+        // materialized document prints.
+        const isolated = await inject(tabId, prep.isolateElement);
+        if (!isolated) throw new Error('Failed to isolate the materialized document.');
+        await new Promise((r) => setTimeout(r, 150));
         region = await inject(tabId, prep.measureTarget);
         if (!region) throw new Error('The materialized document could not be measured.');
         console.log('[wpz] chatgpt adapter:', {
