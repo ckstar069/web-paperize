@@ -201,7 +201,11 @@ export async function capturePage(tabId, settings, options = {}) {
       } else {
       onProgress('Loading the whole page');
       await inject(tabId, prep.primePage, [{
-        scrollThrough: true,
+        // forceGeneric promises "the currently loaded content": the
+        // scroll-through priming would load/unload virtualized history and
+        // change what the DOM holds (user-verified on ChatGPT), so it is
+        // skipped — fonts/images already in the DOM still settle.
+        scrollThrough: !options.forceGeneric,
         scrollDelay: settings.scrollDelay,
         imageTimeout: settings.imageTimeout,
         fontTimeout: settings.fontTimeout,
