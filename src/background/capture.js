@@ -13,7 +13,6 @@
 import * as cdp from './cdp.js';
 import * as prep from './prepare.js';
 import { getAdapter } from '../adapter/index.js';
-import { acquireConversation } from '../adapter/chatgpt/acquire.js';
 import {
   paperInches,
   marginInches,
@@ -142,10 +141,16 @@ export async function capturePage(tabId, settings, options = {}) {
         features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
       });
 
+      // Adapter policy (review 2026-09-10): the adapter is the DATA SOURCE for
+      // complete conversations on page scope only — element/selection exports
+      // keep the generic pipeline (pick one answer, export a selection), and
+      // forceGeneric is the explicit bypass for a plain visible-page export.
       const adapterId = getAdapter(startUrl);
-      const adapterScope = adapterId !== null;
+      const adapterScope = adapterId !== null && scope === 'page' && !options.forceGeneric;
       const elementScope = scope === 'element' || scope === 'selection';
-      const singleSheetRequested = elementScope || adapterScope || Boolean(settings.singlePage);
+      // The adapter must not change the sheet FORM: one-sheet stays opt-in via
+      // the user's checkbox (review item 2).
+      const singleSheetRequested = elementScope || Boolean(settings.singlePage);
       let region = null;
       const printCssFor = (oneSheet) =>
         elementScope
@@ -161,11 +166,15 @@ export async function capturePage(tabId, settings, options = {}) {
         // never a silent fallback to a possibly-partial generic export.
         onProgress('Reading the complete conversation');
         await inject(tabId, prep.beginCaptureState);
-        const model = await inject(tabId, acquireConversation);
+        const model = await inject(tabId, async () => {
+          const mod = await import(chrome.runtime.getURL('src/adapter/chatgpt/acquire.js'));
+          return mod.acquireConversation();
+        });
         if (!model || model.error) {
           throw new Error(
             `Complete-chat export failed: ${model ? model.error : 'no result'}. ` +
-              'No PDF was generated — try again, or use a normal page export if a partial export is acceptable.'
+              'No PDF was generated — try again, or right-click the page and use ' +
+              '"Save visible page as PDF" for a normal export of the currently loaded content.'
           );
         }
         onProgress('Building the printable document');
@@ -189,7 +198,6 @@ export async function capturePage(tabId, settings, options = {}) {
           regionWidth: Math.round(region.width),
           regionHeight: Math.round(region.height),
         });
-        await inject(tabId, prep.applyPrintCss, [BASE_CSS + NO_BREAK_CSS]);
       } else {
       onProgress('Loading the whole page');
       await inject(tabId, prep.primePage, [{
@@ -326,6 +334,15 @@ export async function capturePage(tabId, settings, options = {}) {
       if (singleSheetRequested && !plan) fallbackReason = 'oversize';
       if (!plan) plan = buildPlan(false);
 
+      // Break rules for the materialized chat live INSIDE its shadow root —
+      // light-DOM print CSS cannot reach it (review item 3).
+      const setPrintMode = (mode) =>
+        inject(tabId, async (m) => {
+          const mod = await import(chrome.runtime.getURL('src/adapter/chatgpt/materialize.js'));
+          return mod.setMaterializedPrintMode(m);
+        }, [mode]).catch(() => {});
+      if (adapterScope) await setPrintMode(oneSheet ? 'continuous' : 'paged');
+
       const paramsFor = (p) => ({
         landscape: p.orientation === 'landscape',
         printBackground: settings.printBackground !== false,
@@ -354,6 +371,7 @@ export async function capturePage(tabId, settings, options = {}) {
         fallbackReason = reason;
         oneSheet = false;
         plan = buildPlan(false);
+        if (adapterScope) await setPrintMode('paged');
         // Pagination-friendly CSS replaces the single-sheet set before reprint.
         await inject(tabId, prep.applyPrintCss, [printCssFor(false)]);
       };

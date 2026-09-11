@@ -39,7 +39,7 @@ function toPopup(payload) {
   chrome.runtime.sendMessage({ target: 'popup', ...payload }).catch(() => {});
 }
 
-async function runCapture(tab, { scope = 'page', overrides = null } = {}) {
+async function runCapture(tab, { scope = 'page', forceGeneric = false, overrides = null } = {}) {
   if (!tab || !tab.id) throw new Error('No tab to export.');
   if (!capturable(tab.url)) {
     throw new Error('This page cannot be exported. Open a normal web page and try again.');
@@ -54,6 +54,7 @@ async function runCapture(tab, { scope = 'page', overrides = null } = {}) {
   try {
     const { bytes, metrics } = await capturePage(tab.id, settings, {
       scope,
+      forceGeneric,
       onProgress: (text, progress) => toPopup({ action: 'progress', text, progress }),
     });
     const filename = buildFilename(settings.filenameTemplate, metrics);
@@ -126,6 +127,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (tab && !tab.url && message.url) tab = { ...tab, url: message.url };
           const result = await runCapture(tab, {
             scope: message.scope || 'page',
+            forceGeneric: Boolean(message.forceGeneric),
             overrides: message.overrides || null,
           });
           sendResponse({ ok: true, result });
@@ -162,6 +164,12 @@ const MENUS = [
   { id: 'wpz-page', title: 'Save this page as PDF', contexts: ['page', 'frame'] },
   { id: 'wpz-selection', title: 'Save selection as PDF', contexts: ['selection'] },
   { id: 'wpz-element', title: 'Pick an element to save…', contexts: ['page'] },
+  {
+    id: 'wpz-page-generic',
+    title: 'Save visible page as PDF (no adapter)',
+    contexts: ['page', 'frame'],
+    documentUrlPatterns: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
+  },
 ];
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -174,6 +182,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     if (!tab) return;
     if (info.menuItemId === 'wpz-element') return void startPicker(tab);
+    if (info.menuItemId === 'wpz-page-generic') {
+      return void runCapture(tab, { scope: 'page', forceGeneric: true });
+    }
     if (info.menuItemId === 'wpz-selection') return void runCapture(tab, { scope: 'selection' });
     await runCapture(tab, { scope: 'page' });
   } catch {

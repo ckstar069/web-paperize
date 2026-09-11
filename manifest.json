@@ -28,7 +28,12 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/adapter/chatgpt/materialize.js", "src/adapter/chatgpt/markdown.js"],
+      "resources": [
+        "src/adapter/chatgpt/materialize.js",
+        "src/adapter/chatgpt/markdown.js",
+        "src/adapter/chatgpt/acquire.js",
+        "src/adapter/chatgpt/normalize.js"
+      ],
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"]
     }
   ]

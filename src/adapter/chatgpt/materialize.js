@@ -46,6 +46,48 @@ export const CHAT_CSS = `
 `;
 
 /**
+ * Print rules that live INSIDE the shadow root — light-DOM print CSS does not
+ * penetrate Shadow DOM, so pagination quality cannot come from BASE/BREAK CSS
+ * (review 2026-09-10, item 2 on the adapter list).
+ */
+const PRINT_MODE_CSS = {
+  paged: `
+    pre, table, blockquote, img, figure { break-inside: avoid !important; page-break-inside: avoid !important; }
+    h1, h2, h3, h4, h5 { break-after: avoid !important; page-break-after: avoid !important; }
+    thead { display: table-header-group !important; }
+  `,
+  continuous: `
+    * {
+      break-before: auto !important; break-after: auto !important; break-inside: auto !important;
+      page-break-before: auto !important; page-break-after: auto !important; page-break-inside: auto !important;
+    }
+  `,
+};
+
+/**
+ * Switches the materialized document's print mode. Must be called before
+ * printToPDF so break rules actually apply to the chat content.
+ * @param {'paged'|'continuous'|'none'} mode
+ */
+export function setMaterializedPrintMode(mode) {
+  const host = document.querySelector('[data-wpz-materialized]');
+  if (!host || !host.shadowRoot) return false;
+  const shadow = host.shadowRoot;
+  let style = shadow.querySelector('style[data-wpz-print-mode]');
+  if (mode === 'none' || !PRINT_MODE_CSS[mode]) {
+    if (style) style.remove();
+    return true;
+  }
+  if (!style) {
+    style = document.createElement('style');
+    style.dataset.wpzPrintMode = '';
+    shadow.appendChild(style);
+  }
+  style.textContent = PRINT_MODE_CSS[mode];
+  return true;
+}
+
+/**
  * Builds the printable conversation document. Returns the host element (the
  * capture pipeline treats it as the picked region via store.pickedElement).
  */
@@ -69,7 +111,10 @@ export function materializeConversation(model) {
   h1.textContent = model.title || 'ChatGPT conversation';
   const meta = doc.appendChild(document.createElement('div'));
   meta.className = 'meta';
-  meta.textContent = `${model.messages.length} messages · ${model.url || ''}`;
+  // Compact provenance header (review suggestion): the full URL is noise on a
+  // paper document — source, export date and message count carry the value.
+  const exported = new Date().toISOString().slice(0, 10);
+  meta.textContent = `Source: ChatGPT · Exported: ${exported} · ${model.messages.length} messages`;
 
   for (const message of model.messages) {
     const turn = doc.appendChild(document.createElement('div'));
