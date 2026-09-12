@@ -211,7 +211,18 @@ export function declutterPage(options) {
     if (!noisy && !pinned) continue;
 
     if (noisy) {
-      hide(el);
+      // Substring false-positive guard (Case #1: CSDN body silently vanished).
+      // The real noise targets (cookie banners, chat widgets) carry minimal
+      // text. A wrapper whose class merely CONTAINS a noise word — CSDN's
+      // `has-ad-slots` feature flag matches `ad-slot` — but holds thousands
+      // of characters or the article itself is the page, never noise.
+      const textLen = (el.innerText || '').trim().length;
+      const containsContent = Boolean(
+        el.querySelector('article, main, [role="main"], #article_content')
+      );
+      if (textLen <= 500 && !containsContent) {
+        hide(el);
+      }
       continue;
     }
     const rect = el.getBoundingClientRect();
