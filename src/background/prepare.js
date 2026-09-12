@@ -226,26 +226,16 @@ export function declutterPage(options) {
     // in the document instead of stamped onto every page of the PDF.
     //
     // Generic fix (Case #1: CSDN body silently vanished): `position: static`
-    // re-enters normal flow and displaces content whose margin/grid offsets
-    // reserved space for the pinned element. Instead:
-    //   fixed  → absolute (stays out of flow, no layout shift, prints once)
-    //   sticky → relative (was already in flow; relative preserves geometry)
+    // re-enters normal flow and displaces content. Instead, change only the
+    // position TYPE — existing top/left/right/bottom are preserved:
+    //   fixed  → absolute (both out of flow; absolute doesn't repeat per page)
+    //   sticky → relative (was in flow; relative stays in flow, no sticking)
+    // No coordinate math: the element's own CSS values now reference the
+    // nearest positioned ancestor instead of the viewport, which is correct
+    // for root-level headers/navbars (the common case for fixed elements).
     if (opts.unpin !== false) {
-      if (cs.position === 'fixed') {
-        const r = el.getBoundingClientRect();
-        record(el, 'position');
-        record(el, 'top');
-        record(el, 'left');
-        record(el, 'width');
-        el.style.setProperty('position', 'absolute', 'important');
-        el.style.setProperty('top', `${r.top + window.scrollY}px`, 'important');
-        el.style.setProperty('left', `${r.left + window.scrollX}px`, 'important');
-        el.style.setProperty('width', `${r.width}px`, 'important');
-      } else {
-        // sticky → relative: already in flow, no coordinates needed
-        record(el, 'position');
-        el.style.setProperty('position', 'relative', 'important');
-      }
+      record(el, 'position');
+      el.style.setProperty('position', cs.position === 'fixed' ? 'absolute' : 'relative', 'important');
     }
   }
 
