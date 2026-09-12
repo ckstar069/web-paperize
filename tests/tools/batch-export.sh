@@ -86,7 +86,7 @@ while IFS='|' read -r cat title url; do
 
   # Brief pause between exports
   sleep 2
-done < "$urls_file"
+done < "$URLS_FILE"
 
 echo ""
 echo "=== Results ==="

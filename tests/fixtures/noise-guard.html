@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>NOISE 误杀回归 — has-ad-slots 容器不应被隐藏</title>
+<!--
+  Case #1 regression: CSDN 主容器 class 含 has-ad-slots，
+  NOISE 子串匹配 ad-slot 命中 → 整个正文被 display:none。
+  断言：含大量正文的"噪声匹配"容器不隐藏；真正的少量广告隐藏。
+-->
+<style>
+  body { font: 16px/1.7 sans-serif; margin: 40px; }
+  .page { padding: 20px; }
+  .sticky-ad { position: fixed; bottom: 10px; right: 10px; padding: 8px 16px; background: #fee; }
+</style>
+</head>
+<body>
+
+<!-- 假阳性守卫：class 含 ad-slot 但装着正文 → 不应隐藏 -->
+<div class="page has-ad-slots" id="content-wrapper">
+  <article id="article_content">
+    <h1>正文标题：NOISE 误杀回归测试</h1>
+    <p>这是一段真实正文内容。如果这个容器被错误地隐藏，说明 NOISE 子串匹配的
+    内容量守卫失效了。本容器 class 含 "has-ad-slots"，会被 NOISE 词表中的
+    "ad-slot" 子串匹配命中，但因为包含 article 元素且有大量文字，不应被隐藏。</p>
+    <p>正文第二段。CONTENT-MUST-SURVIVE-MARKER 这段文字必须出现在导出的 PDF 中。</p>
+  </article>
+</div>
+
+<!-- 真正的噪声：class 含 sticky-ad 且内容极少 → 应该隐藏 -->
+<div class="sticky-ad" id="real-ad">广告位 AD-MUST-BE-HIDDEN-MARKER</div>
+
+<!-- 边界：自身就是 main 且 class 含 ad-slot → 也不应隐藏 -->
+<main class="ad-slot-layout" id="self-main">
+  <p>自身是 main 元素且 class 含 ad-slot，也不应被隐藏。SELF-MAIN-MARKER</p>
+</main>
+
+</body>
+</html>

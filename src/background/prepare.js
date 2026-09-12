@@ -218,6 +218,7 @@ export function declutterPage(options) {
       // of characters or the article itself is the page, never noise.
       const textLen = (el.innerText || '').trim().length;
       const containsContent = Boolean(
+        el.matches('article, main, [role="main"], #article_content') ||
         el.querySelector('article, main, [role="main"], #article_content')
       );
       if (textLen <= 500 && !containsContent) {
