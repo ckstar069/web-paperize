@@ -167,8 +167,7 @@ const MENUS = [
   {
     id: 'wpz-page-generic',
     title: 'Save visible page as PDF (no adapter)',
-    contexts: ['page', 'frame'],
-    documentUrlPatterns: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
+    contexts: ['page', 'frame'],    documentUrlPatterns: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
   },
 ];
 
@@ -189,6 +188,17 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     await runCapture(tab, { scope: 'page' });
   } catch {
     /* surfaced through the badge and the popup already */
+  }
+});
+
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== 'capture-page') return;
+  try {
+    const tab = await activeTab();
+    if (!tab) return;
+    await runCapture(tab, { scope: 'page' });
+  } catch {
+    /* surfaced through the badge already */
   }
 });
 
