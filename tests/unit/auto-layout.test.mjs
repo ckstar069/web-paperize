@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import './chrome-stub.mjs'; // must run before the chrome-wiring imports below
+import { chromeTest } from './chrome-stub.mjs'; // must run before chrome-wiring imports
 
 import {
   resolveEngine,
@@ -10,6 +10,7 @@ import {
 } from '../../src/background/capture.js';
 import {
   normalizeLayoutMode,
+  normalizeDefaults,
   DEFAULTS,
   getDefaults,
   setDefaults,
@@ -107,6 +108,57 @@ test('settings read/write normalization executes with a local helper binding', a
 
   const updated = await setDefaults({ layoutMode: 'invalid' });
   assert.equal(updated.layoutMode, 'auto');
+});
+
+test('corrupted storage is normalized by one complete schema and unknown keys are dropped', async () => {
+  chromeTest.replaceDefaults({
+    paper: 'ledger', layoutMode: 'AUTO', orientation: 'sideways', margin: 'huge',
+    fitWidth: 'false', printBackground: false, avoidBreaks: 1, declutter: true,
+    expandScrollers: null, singlePage: 'true', filenameTemplate: 42,
+    scrollDelay: -5, imageTimeout: 1e9, fontTimeout: Number.NaN,
+    unknownLegacyKey: 'must-not-leak',
+  });
+  const settings = await getDefaults();
+  assert.deepEqual(settings, {
+    ...DEFAULTS,
+    printBackground: false,
+    declutter: true,
+    scrollDelay: 10,
+    imageTimeout: 60000,
+  });
+  assert.equal(Object.hasOwn(settings, 'unknownLegacyKey'), false);
+  assert.equal(settings.fitWidth, true, 'string false cannot cross the boolean boundary');
+  assert.equal(settings.singlePage, false, 'string true cannot cross the boolean boundary');
+});
+
+test('normalizer clamps finite duration overrides and preserves valid enums/booleans', () => {
+  const settings = normalizeDefaults({
+    paper: 'letter', layoutMode: 'original', orientation: 'landscape', margin: 'wide',
+    fitWidth: false, filenameTemplate: 'paper-{title}', scrollDelay: 1,
+    imageTimeout: 500.6, fontTimeout: 90000,
+  });
+  assert.equal(settings.paper, 'letter');
+  assert.equal(settings.fitWidth, false);
+  assert.equal(settings.scrollDelay, 10);
+  assert.equal(settings.imageTimeout, 501);
+  assert.equal(settings.fontTimeout, 30000);
+});
+
+test('storage.set rejection leaves cache and persisted settings consistent', async () => {
+  const stable = await setDefaults({ margin: 'slim', paper: 'letter' });
+  chromeTest.rejectNextSet();
+  await assert.rejects(setDefaults({ margin: 'wide' }), /synthetic storage failure/);
+  const after = await getDefaults();
+  assert.deepEqual(after, stable);
+  assert.deepEqual(chromeTest.localData.defaults, stable);
+});
+
+test('popup settings persistence surfaces failures instead of empty catch handlers', async () => {
+  const source = await import('node:fs').then((fs) =>
+    fs.readFileSync(new URL('../../src/popup/popup.js', import.meta.url), 'utf8'));
+  assert.match(source, /async function persistSetting/);
+  assert.match(source, /showStatus\([^\n]*Could not save settings/);
+  assert.doesNotMatch(source, /setDefaults[^\n]*\.catch\(\(\) => \{\}\)/);
 });
 
 test('D-proof: detector LOW is representable as an AutoLowSignal without being an error state', () => {

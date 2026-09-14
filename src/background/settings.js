@@ -23,24 +23,62 @@ export const DEFAULTS = {
   filenameTemplate: '{title}',
   /** One tall continuous sheet instead of paginating (capped, see util). */
   singlePage: false,
+  // Advanced capture knobs are not exposed in the popup, but are real runtime
+  // inputs used by diagnostic/test overrides and therefore belong in schema.
+  scrollDelay: 60,
+  imageTimeout: 6000,
+  fontTimeout: 3000,
+  debugPaperize: false,
 };
 
 const cache = { defaults: null };
 
+const ENUMS = {
+  paper: new Set(['a4', 'letter']),
+  orientation: new Set(['auto', 'portrait', 'landscape']),
+  margin: new Set(['none', 'slim', 'normal', 'wide']),
+};
+const BOOLEANS = [
+  'fitWidth', 'printBackground', 'avoidBreaks', 'declutter',
+  'expandScrollers', 'singlePage', 'debugPaperize',
+];
+const DURATIONS = {
+  scrollDelay: [10, 2000],
+  imageTimeout: [250, 60000],
+  fontTimeout: [250, 30000],
+};
+
+/** Returns a complete runtime-safe schema and drops unknown stored keys. */
+export function normalizeDefaults(value) {
+  const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const next = { ...DEFAULTS };
+  for (const [key, allowed] of Object.entries(ENUMS)) {
+    if (allowed.has(input[key])) next[key] = input[key];
+  }
+  next.layoutMode = normalizeLayoutMode(input.layoutMode);
+  for (const key of BOOLEANS) {
+    if (typeof input[key] === 'boolean') next[key] = input[key];
+  }
+  if (typeof input.filenameTemplate === 'string') next.filenameTemplate = input.filenameTemplate;
+  for (const [key, [min, max]] of Object.entries(DURATIONS)) {
+    const n = input[key];
+    if (typeof n === 'number' && Number.isFinite(n)) {
+      next[key] = Math.round(Math.min(max, Math.max(min, n)));
+    }
+  }
+  return next;
+}
+
 async function read() {
   if (cache.defaults) return cache.defaults;
   const stored = await chrome.storage.local.get({ defaults: {} });
-  const merged = { ...DEFAULTS, ...(stored.defaults || {}) };
-  merged.layoutMode = normalizeLayoutMode(merged.layoutMode);
-  cache.defaults = merged;
+  cache.defaults = normalizeDefaults(stored.defaults);
   return cache.defaults;
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.defaults) return;
-  const merged = { ...DEFAULTS, ...(changes.defaults.newValue || {}) };
-  merged.layoutMode = normalizeLayoutMode(merged.layoutMode);
-  cache.defaults = merged;
+  cache.defaults = normalizeDefaults(changes.defaults.newValue);
 });
 
 export async function getDefaults() {
@@ -48,9 +86,8 @@ export async function getDefaults() {
 }
 
 export async function setDefaults(patch) {
-  const next = { ...(await read()), ...patch };
-  if ('layoutMode' in next) next.layoutMode = normalizeLayoutMode(next.layoutMode);
-  cache.defaults = next;
+  const next = normalizeDefaults({ ...(await read()), ...(patch || {}) });
   await chrome.storage.local.set({ defaults: next });
+  cache.defaults = next;
   return { ...next };
 }

@@ -8,7 +8,7 @@
  */
 
 import { capturePage } from './capture.js';
-import { getDefaults, setDefaults } from './settings.js';
+import { getDefaults, normalizeDefaults, setDefaults } from './settings.js';
 import { buildFilename } from './util.js';
 import { savePdf } from './download.js';
 
@@ -48,7 +48,7 @@ async function runCapture(tab, { scope = 'page', forceGeneric = false, layout = 
 
   busyTabs.add(tab.id);
   detachedExternally.delete(tab.id);
-  const settings = { ...(await getDefaults()), ...(overrides || {}) };
+  const settings = normalizeDefaults({ ...(await getDefaults()), ...(overrides || {}) });
   setBadge('...');
 
   try {

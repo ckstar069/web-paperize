@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WPZ Hostile CSS Fixture</title>
+  <style>
+    * {
+      width: 123px !important;
+      max-width: 123px !important;
+      margin-left: 300px !important;
+      transform: scale(.2) !important;
+      position: fixed !important;
+      float: right !important;
+    }
+    [data-wpz-paper-document], [data-wpz-materialized] {
+      display: none !important;
+      zoom: .4 !important;
+      box-sizing: content-box !important;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article>
+      <h1>Hostile source CSS must not control an owned paper host</h1>
+      <p>HOSTILE-CSS-CONTENT-MARKER</p>
+      <p>This fixture deliberately attacks light-DOM host geometry with author important rules.</p>
+      <p>Paperized output must remain visible, centred, full width, and at its owned scale.</p>
+      <p>Additional prose makes the fixture useful for direct forced-Paperized browser validation.</p>
+    </article>
+  </main>
+</body>
+</html>

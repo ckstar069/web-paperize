@@ -178,14 +178,16 @@ export function extractPaperArticle() {
           continue;
         }
         if (!(tag in ALLOWED)) {
+          // Sanitize the full subtree before promoting it. This post-order
+          // traversal makes arbitrary unknown-wrapper depth safe in one pass;
+          // a fixed number of outer passes cannot provide that invariant.
+          walk(child);
           const parent = child.parentNode;
           if (parent) {
             while (child.firstChild) parent.insertBefore(child.firstChild, child);
             child.remove();
             removed.unwrapped += 1;
           }
-          // Re-walk the promoted children on the next outer pass by leaving
-          // them in `children` — they were collected before the unwrap.
           continue;
         }
         const keepAttrs = ALLOWED[tag];
@@ -213,15 +215,26 @@ export function extractPaperArticle() {
     }
   };
   walk(parsed.body);
-  // Unwrapped nodes' children were collected pre-unwrap: walk once more to
-  // catch any promoted-but-uninspected leftovers.
-  walk(parsed.body);
-  const contentHtml = parsed.body.innerHTML;
 
   // -- G1.1 task 2: post-sanitize residue check --
   const residue = {};
+  const invariantViolations = { tags: [], attrs: [] };
   for (const el of parsed.body.querySelectorAll('*')) {
+    if (!(el.tagName in ALLOWED)) invariantViolations.tags.push(el.tagName);
+    const keepAttrs = ALLOWED[el.tagName] || [];
     for (const attr of el.attributes) residue[attr.name] = (residue[attr.name] || 0) + 1;
+    for (const attr of el.attributes) {
+      if (!keepAttrs.includes(attr.name)) invariantViolations.attrs.push(`${el.tagName}.${attr.name}`);
+    }
+  }
+  if (invariantViolations.tags.length || invariantViolations.attrs.length) {
+    diagnostics.sanitize = removed;
+    diagnostics.sanitizeAudit = {
+      rawAttributes: auditRaw,
+      residueAfterSanitize: residue,
+      invariantViolations,
+    };
+    return { ok: false, error: 'sanitize-invariant-violation', diagnostics };
   }
 
   // -- G1.1 task 4: generic title resolution (content h1 → Readability →
@@ -467,7 +480,7 @@ export function extractPaperArticle() {
     },
     diagnostics: Object.assign(diagnostics, {
       sanitize: removed,
-      sanitizeAudit: { rawAttributes: auditRaw, residueAfterSanitize: residue },
+      sanitizeAudit: { rawAttributes: auditRaw, residueAfterSanitize: residue, invariantViolations },
       titleResolution,
       tailPruning,
       contentStats,
@@ -486,11 +499,16 @@ export function buildPaperDocument(model, css) {
   // HOST (it lives in light DOM); zoom/transform/font-size on the host would
   // rescale everything inside the shadow. Inline !important outranks author
   // stylesheets, so the paper geometry is owned from here on.
-  host.style.cssText =
-    'width:800px;margin:0 auto;max-width:100%;' +
-    'zoom:1 !important;transform:none !important;scale:none !important;' +
-    'font-size:17px !important;line-height:1.65 !important;' +
-    'position:static !important;contain:layout style;';
+  const ownedGeometry = {
+    display: 'block', width: '800px', 'max-width': '100%',
+    'margin-top': '0', 'margin-right': 'auto', 'margin-bottom': '0', 'margin-left': 'auto',
+    position: 'static', float: 'none', transform: 'none', scale: 'none', zoom: '1',
+    'box-sizing': 'border-box', 'font-size': '17px', 'line-height': '1.65',
+    contain: 'layout style',
+  };
+  for (const [property, value] of Object.entries(ownedGeometry)) {
+    host.style.setProperty(property, value, 'important');
+  }
   const shadow = host.attachShadow({ mode: 'open' });
   const style = shadow.appendChild(document.createElement('style'));
   style.textContent = css;
@@ -525,38 +543,32 @@ export function buildPaperDocument(model, css) {
   // (naturalWidth/naturalHeight < 0.8, height ≥ 500) gets the tall profile —
   // long screenshots need vertical paper real estate, not the 90mm stamp cap.
   const imgs = Array.from(shadow.querySelectorAll('img'));
-  return new Promise((resolve) => {
-    let left = imgs.length;
-    const profiles = [];
-    const classify = () => {
-      for (const img of imgs) {
-        const w = img.naturalWidth || 0;
-        const h = img.naturalHeight || 0;
-        const ratio = w && h ? Math.round((w / h) * 100) / 100 : null;
-        const tall = ratio !== null && ratio < 0.8 && h >= 500;
-        if (tall) img.setAttribute('data-wpz-tall', '');
-        profiles.push({ w, h, ratio, profile: !ratio ? 'unknown' : tall ? 'tall' : 'normal' });
-      }
-    };
+  return Promise.all(imgs.map((img) => new Promise((resolve) => {
+    if (img.complete) return resolve();
+    let settled = false;
+    let timer = null;
     const done = () => {
-      left -= 1;
-      if (left <= 0) {
-        classify();
-        resolve({ ok: true, images: imgs.length, mediaProfiles: profiles });
-      }
+      if (settled) return;
+      settled = true;
+      if (timer !== null) clearTimeout(timer);
+      img.removeEventListener('load', done);
+      img.removeEventListener('error', done);
+      resolve();
     };
-    if (!left) {
-      classify();
-      return resolve({ ok: true, images: 0, mediaProfiles: [] });
-    }
+    img.addEventListener('load', done, { once: true });
+    img.addEventListener('error', done, { once: true });
+    timer = setTimeout(done, 10000);
+  }))).then(() => {
+    const profiles = [];
     for (const img of imgs) {
-      if (img.complete) done();
-      else {
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', done, { once: true });
-        setTimeout(done, 10000);
-      }
+      const w = img.naturalWidth || 0;
+      const h = img.naturalHeight || 0;
+      const ratio = w && h ? Math.round((w / h) * 100) / 100 : null;
+      const tall = ratio !== null && ratio < 0.8 && h >= 500;
+      if (tall) img.setAttribute('data-wpz-tall', '');
+      profiles.push({ w, h, ratio, profile: !ratio ? 'unknown' : tall ? 'tall' : 'normal' });
     }
+    return { ok: true, images: imgs.length, mediaProfiles: profiles };
   });
 }
 
@@ -640,4 +652,3 @@ export function applyPaperPrintState() {
   void document.documentElement.offsetHeight;
   return true;
 }
-

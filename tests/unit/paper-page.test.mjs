@@ -188,6 +188,59 @@ test('A+B: print state hides the source page and clears min-width; restore is ex
   assert.equal(bodyStyle.getPropertyValue('margin-top'), '', 'capture margin cleared');
   assert.equal(bodyStyle.getPropertyValue('min-width'), '', 'capture min-width cleared');
   assert.ok(!host.isConnected, 'host detached');
+  assert.equal(win.__wpz__.pickedElement, null, 'detached paper host strong reference released');
+  assert.equal(win.__wpz__.materializedHost, null, 'adapter ownership slot also reset');
+});
+
+test('sanitizer is complete across ten unknown wrapper levels', () => {
+  const wrappers = Array.from({ length: 10 }, (_, i) => `<unknown-${i} data-x="${i}" onclick="bad()">`).join('');
+  const closes = Array.from({ length: 10 }, (_, i) => `</unknown-${9 - i}>`).join('');
+  const adversarial = `<div>${longBody(8)}${wrappers}<p class="bad" style="color:red" onclick="bad()">
+    <a href="javascript:alert(1)" onfocus="bad()">unsafe</a>
+    <img src="https://cdn.local/image.png" alt="safe" onerror="bad()" style="width:1px" class="bad"></p>${closes}</div>`;
+  const { win } = makeWindow(`<!DOCTYPE html><html><head><title>Adversarial sanitizer test</title></head><body><article>
+    <h1>Adversarial sanitizer test</h1>${longBody(8)}</article></body></html>`);
+  // Hold extraction input deterministic: Readability itself may pre-sanitize
+  // javascript anchors, while this test targets our post-extraction boundary.
+  win.Readability = class {
+    parse() {
+      return { content: adversarial, title: 'Adversarial sanitizer test', length: 2000, excerpt: '' };
+    }
+  };
+  const res = runInWindow(win, paperPage.extractPaperArticle);
+  assert.ok(res.ok, res.error || 'extraction succeeds');
+
+  const parsed = new win.DOMParser().parseFromString(res.model.contentHtml, 'text/html');
+  assert.equal(parsed.querySelectorAll('unknown-0, unknown-1, unknown-2, unknown-3, unknown-4, unknown-5, unknown-6, unknown-7, unknown-8, unknown-9').length, 0);
+  assert.equal(parsed.querySelectorAll('[onclick], [onerror], [onfocus], [style], [class]').length, 0);
+  assert.equal(parsed.querySelector('a').hasAttribute('href'), false, 'javascript href removed');
+  const img = parsed.querySelector('img');
+  assert.deepEqual(Array.from(img.attributes, (attr) => attr.name).sort(), ['alt', 'src']);
+  assert.equal(res.diagnostics.sanitizeAudit.invariantViolations.tags.length, 0);
+  assert.equal(res.diagnostics.sanitizeAudit.invariantViolations.attrs.length, 0);
+});
+
+test('Paperized light-DOM host geometry is protected with inline important declarations', async () => {
+  const { win } = makeWindow(`<!DOCTYPE html><html><head><title>T</title><style>
+    * { width:123px !important; max-width:123px !important; margin-left:300px !important;
+        transform:scale(.2) !important; position:fixed !important; display:none !important; float:right !important; }
+  </style></head><body></body></html>`);
+  runInWindow(win, prep.beginCaptureState);
+  const built = await runInWindow(win, paperPage.buildPaperDocument, {
+    title: 'Host geometry', byline: '', publishedTime: '', siteName: 'test',
+    sourceUrl: 'https://example.local/x', contentHtml: '<p>content</p>', textLength: 7,
+  }, PAPER_CSS);
+  assert.ok(built.ok);
+  const host = win.__wpz__.pickedElement;
+  const expected = {
+    display: 'block', width: '800px', 'max-width': '100%', 'margin-left': 'auto',
+    transform: 'none', position: 'static', float: 'none', 'box-sizing': 'border-box', zoom: '1',
+  };
+  for (const [property, value] of Object.entries(expected)) {
+    assert.equal(host.style.getPropertyValue(property), value, property);
+    assert.equal(host.style.getPropertyPriority(property), 'important', `${property} priority`);
+  }
+  runInWindow(win, prep.restorePage);
 });
 
 // ---------------------------------------------------------------------------

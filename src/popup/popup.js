@@ -39,6 +39,35 @@ function showStatus(text, kind) {
 
 const state = { tab: null };
 
+function applySettings(s) {
+  $('paper').value = s.paper;
+  $('layoutMode').value = s.layoutMode;
+  applyLayoutCompat(s.layoutMode);
+  $('orientation').value = s.orientation;
+  $('margin').value = s.margin;
+  $('singlePage').checked = s.singlePage;
+}
+
+async function persistSetting(patch) {
+  try {
+    const response = await send({ action: 'setDefaults', patch });
+    if (!response || !response.ok) {
+      throw new Error((response && response.message) || 'Could not save settings.');
+    }
+    applySettings(response.settings);
+  } catch (error) {
+    // Restore the controls from durable state: a failed write must never look
+    // successful merely because the user already changed the select/checkbox.
+    try {
+      const current = await send({ action: 'getState' });
+      if (current && current.ok && current.settings) applySettings(current.settings);
+    } catch {
+      /* preserve the original save error below */
+    }
+    showStatus(error && error.message ? error.message : 'Could not save settings.', 'error');
+  }
+}
+
 async function init() {
   try {
     const response = await send({ action: 'getState' });
@@ -47,13 +76,7 @@ async function init() {
       return;
     }
     state.tab = response.tab;
-    const s = response.settings;
-    $('paper').value = s.paper;
-    $('layoutMode').value = s.layoutMode || 'auto';
-    applyLayoutCompat($('layoutMode').value);
-    $('orientation').value = s.orientation;
-    $('margin').value = s.margin;
-    $('singlePage').checked = Boolean(s.singlePage);
+    applySettings(response.settings);
     if (response.tab && !response.tab.capturable) {
       save.disabled = true;
       $('pick').disabled = true;
@@ -91,12 +114,12 @@ $('layoutMode').addEventListener('change', () => {
 
 document.querySelectorAll('select').forEach((el) => {
   el.addEventListener('change', () => {
-    send({ action: 'setDefaults', patch: { [el.id]: el.value } }).catch(() => {});
+    void persistSetting({ [el.id]: el.value });
   });
 });
 
 $('singlePage').addEventListener('change', () => {
-  send({ action: 'setDefaults', patch: { singlePage: $('singlePage').checked } }).catch(() => {});
+  void persistSetting({ singlePage: $('singlePage').checked });
 });
 
 $('pick').addEventListener('click', async () => {

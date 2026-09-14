@@ -162,7 +162,17 @@ export async function materializeConversation(model) {
   const host = document.createElement('div');
   host.dataset.wpzMaterialized = '';
   // Fixed chat width so the capture region is the document, not the body.
-  host.style.cssText = 'width: 800px; margin: 0 auto; max-width: 100%;';
+  // The host lives in light DOM, so every geometry invariant must outrank
+  // hostile author !important rules; Shadow DOM only isolates descendants.
+  const ownedGeometry = {
+    display: 'block', width: '800px', 'max-width': '100%',
+    'margin-top': '0', 'margin-right': 'auto', 'margin-bottom': '0', 'margin-left': 'auto',
+    position: 'static', float: 'none', transform: 'none', scale: 'none', zoom: '1',
+    'box-sizing': 'border-box',
+  };
+  for (const [property, value] of Object.entries(ownedGeometry)) {
+    host.style.setProperty(property, value, 'important');
+  }
   const shadow = host.attachShadow({ mode: 'open' });
 
   const style = shadow.appendChild(document.createElement('style'));
@@ -211,22 +221,21 @@ export async function materializeConversation(model) {
   store.materializedHost = host;
   store.pickedElement = host;
 
-  await new Promise((resolve) => {
-    let left = pendingImages.length;
-    if (!left) return resolve();
+  await Promise.all(pendingImages.map((img) => new Promise((resolve) => {
+    if (img.complete) return resolve();
+    let settled = false;
+    let timer = null;
     const done = () => {
-      left -= 1;
-      if (left <= 0) resolve();
+      if (settled) return;
+      settled = true;
+      if (timer !== null) clearTimeout(timer);
+      img.removeEventListener('load', done);
+      img.removeEventListener('error', done);
+      resolve();
     };
-    for (const img of pendingImages) {
-      if (img.complete) {
-        done();
-      } else {
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', done, { once: true });
-        setTimeout(done, 10000);
-      }
-    }
-  });
+    img.addEventListener('load', done, { once: true });
+    img.addEventListener('error', done, { once: true });
+    timer = setTimeout(done, 10000);
+  })));
   return true;
 }

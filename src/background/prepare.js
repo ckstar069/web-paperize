@@ -513,6 +513,11 @@ export function restorePage() {
     if (node && node.remove) node.remove();
   }
   store.injected = [];
+  // Ownership references are capture-scoped. Keeping a detached Paperized or
+  // adapter host here retains its entire Shadow DOM until navigation. A future
+  // picker always installs a fresh target, so release generic targets too.
+  store.pickedElement = null;
+  store.materializedHost = null;
   store.printStyle = null;
   if (store.undo) {
     for (let i = store.undo.length - 1; i >= 0; i -= 1) {

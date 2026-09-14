@@ -76,3 +76,83 @@ test('isolateElement + restorePage preserve single-longhand site styles (F-2)', 
   assert.match(body.style.getPropertyValue('background-color'), /#eef4fb|rgb\(238,\s*244,\s*251\)/, 'site background restored (background-color longhand)');
   assert.equal(wrap.style.getPropertyValue('padding-left'), '20px', 'wrapper padding restored');
 });
+
+test('restore releases every capture-owned DOM reference, not just connected hosts', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM('<!DOCTYPE html><html><body><main id="source">source</main></body></html>', {
+    url: 'https://example.local/x', runScripts: 'outside-only',
+  });
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  run(prep.beginCaptureState);
+
+  const host = win.document.createElement('div');
+  host.attachShadow({ mode: 'open' }).innerHTML = `<article>${'<p>large owned tree</p>'.repeat(100)}</article>`;
+  win.document.body.appendChild(host);
+  win.__wpz__.injected.push(host);
+  win.__wpz__.pickedElement = host;
+  win.__wpz__.materializedHost = host;
+
+  run(prep.restorePage);
+  assert.equal(host.isConnected, false);
+  assert.equal(win.__wpz__.pickedElement, null);
+  assert.equal(win.__wpz__.materializedHost, null);
+  assert.equal(win.__wpz__.injected.length, 0);
+});
+
+test('Element target lifecycle resets cleanly for a subsequent picker/capture', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM(
+    '<!DOCTYPE html><html><body><div id="wrap"><article id="target"><p>content</p></article></div></body></html>',
+    { url: 'https://example.local/x', runScripts: 'outside-only' }
+  );
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  const target = win.document.getElementById('target');
+
+  run(prep.beginCaptureState);
+  win.__wpz__.pickedElement = target;
+  assert.ok(run(prep.isolateElement));
+  run(prep.restorePage);
+  assert.equal(win.__wpz__.pickedElement, null);
+
+  // A fresh picker writes the new target; no stale capture-owned reference or
+  // restore state prevents a second isolation cycle.
+  win.__wpz__.pickedElement = target;
+  assert.ok(run(prep.isolateElement));
+  run(prep.restorePage);
+  assert.equal(win.__wpz__.pickedElement, null);
+});
+
+test('Selection holder lifecycle resets cleanly for a subsequent selection capture', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM('<!DOCTYPE html><html><body><p id="source">selectable text</p></body></html>', {
+    url: 'https://example.local/x', runScripts: 'outside-only',
+  });
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  const selectSource = () => {
+    const range = win.document.createRange();
+    range.selectNodeContents(win.document.getElementById('source'));
+    const selection = win.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  run(prep.beginCaptureState);
+  selectSource();
+  assert.ok(run(prep.isolateSelection));
+  const firstHolder = win.__wpz__.pickedElement;
+  assert.ok(firstHolder.matches('[data-wpz-holder]'));
+  run(prep.restorePage);
+  assert.equal(firstHolder.isConnected, false);
+  assert.equal(win.__wpz__.pickedElement, null);
+
+  selectSource();
+  assert.ok(run(prep.isolateSelection));
+  const secondHolder = win.__wpz__.pickedElement;
+  assert.notEqual(secondHolder, firstHolder);
+  run(prep.restorePage);
+  assert.equal(secondHolder.isConnected, false);
+  assert.equal(win.__wpz__.pickedElement, null);
+});

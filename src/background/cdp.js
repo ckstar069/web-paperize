@@ -100,16 +100,21 @@ export async function withDebugger(tabId, fn) {
 /** Reads a CDP IO stream to the end and returns the base64 chunks. */
 export async function readStream(tabId, handle) {
   const chunks = [];
-  for (;;) {
-    const { data, base64Encoded, eof } = await send(tabId, 'IO.read', {
-      handle,
-      size: 1 << 20,
-    });
-    if (data) chunks.push(base64Encoded ? data : btoa(data));
-    if (eof) break;
+  try {
+    for (;;) {
+      const { data, base64Encoded, eof } = await send(tabId, 'IO.read', {
+        handle,
+        size: 1 << 20,
+      });
+      if (data) chunks.push(base64Encoded ? data : btoa(data));
+      if (eof) break;
+    }
+    return chunks;
+  } finally {
+    // Best effort: a close failure must not mask the original read/decoding
+    // error, while an outer debugger session may stay alive for Auto fallback.
+    await send(tabId, 'IO.close', { handle }).catch(() => {});
   }
-  await send(tabId, 'IO.close', { handle }).catch(() => {});
-  return chunks;
 }
 
 function explainAttachFailure(message) {
