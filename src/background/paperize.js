@@ -79,6 +79,7 @@ export async function paperizeCapture(tabId, settings, options = {}) {
       onProgress('Loading the page content');
       stage.at = 'prime';
       await inject(tabId, prep.beginCaptureState);
+      await inject(tabId, prep.suspendDarkReader);
       await inject(tabId, prep.primePage, [
         {
           scrollThrough: true,
@@ -155,6 +156,11 @@ export async function paperizeCapture(tabId, settings, options = {}) {
         throw new Error('Failed to enter the paperized print state.');
       }
       await new Promise((r) => setTimeout(r, 100));
+
+      // The owned shadow root is created after the first document-level scan;
+      // suspend any Dark Reader sheets injected into it before printing.
+      await inject(tabId, prep.suspendDarkReader);
+      await new Promise((r) => setTimeout(r, 50));
 
       await inject(tabId, prep.applyPrintCss, [BASE_CSS]);
 

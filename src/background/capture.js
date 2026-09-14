@@ -211,6 +211,7 @@ export async function capturePage(tabId, settings, options = {}) {
         // never a silent fallback to a possibly-partial generic export.
         onProgress('Reading the complete conversation');
         await inject(tabId, prep.beginCaptureState);
+        await inject(tabId, prep.suspendDarkReader);
         const model = await inject(tabId, async () => {
           const mod = await import(chrome.runtime.getURL('src/adapter/chatgpt/acquire.js'));
           return mod.acquireConversation();
@@ -304,6 +305,10 @@ export async function capturePage(tabId, settings, options = {}) {
         autoFallback: autoMeta ? autoMeta.autoFallback : false,
       };
       onProgress('Loading the whole page');
+      if (elementScope) {
+        await inject(tabId, prep.beginCaptureState);
+        await inject(tabId, prep.suspendDarkReader);
+      }
       await inject(tabId, prep.primePage, [{
         // forceGeneric promises "the currently loaded content" and
         // element/selection capture a picked region — neither should disturb
@@ -361,6 +366,14 @@ export async function capturePage(tabId, settings, options = {}) {
 
       await inject(tabId, prep.applyPrintCss, [printCssFor(singleSheetRequested)]);
       } // end generic (non-adapter) path
+
+      // Dark Reader also discovers newly-created open shadow roots. Re-scan
+      // after materialization/isolation so every owned light-paper surface is
+      // using the page's original colour declarations before printToPDF.
+      if (adapterScope || elementScope) {
+        await inject(tabId, prep.suspendDarkReader);
+        await new Promise((r) => setTimeout(r, 50));
+      }
 
       onProgress('Measuring');
       let metrics = await inject(tabId, prep.measurePage);

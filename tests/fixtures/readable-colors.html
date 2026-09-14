@@ -1,0 +1,112 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WPZ readable color fixture</title>
+<style>
+  html, body { background: #ffffff; }
+  body {
+    margin: 0;
+    color: #172033;
+    font: 17px/1.65 system-ui, -apple-system, sans-serif;
+  }
+  main { width: 680px; margin: 36px auto; }
+  article { background: #ffffff; }
+  a { color: #1557b0; }
+  pre { color: #172033; background: #f1f4f8; padding: 14px; }
+</style>
+<script>
+  // A deterministic Dark Reader-shaped mode for the isolated Chrome E2E.
+  // The normal fixture remains plain white/black; `?emulate-dark-reader=1`
+  // reproduces the light-foreground/dark-background rewrite (including newly
+  // created open shadow roots) without depending on a user profile.
+  if (new URLSearchParams(location.search).has('emulate-dark-reader')) {
+    document.documentElement.setAttribute('data-darkreader-mode', 'dynamic');
+    document.documentElement.setAttribute('data-darkreader-scheme', 'dark');
+    const makeStyle = () => {
+      const style = document.createElement('style');
+      style.className = 'darkreader darkreader--wpz-fixture';
+      style.textContent = `
+        html, body { background: #191b1c !important; }
+        body, h1, p, pre, code { color: #dbd7d1 !important; }
+        a { color: #54a0f4 !important; }
+        .doc, .doc * { color: #e8e6e3 !important; }
+        .doc { background: #191b1c !important; }
+      `;
+      return style;
+    };
+    document.head.appendChild(makeStyle());
+    const injectOwnedShadowStyle = () => {
+      for (const host of document.querySelectorAll('[data-wpz-paper-document], [data-wpz-materialized]')) {
+        if (host.shadowRoot && !host.shadowRoot.querySelector('.darkreader--wpz-fixture')) {
+          host.shadowRoot.appendChild(makeStyle());
+        }
+      }
+    };
+    new MutationObserver(injectOwnedShadowStyle).observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+  }
+</script>
+<main>
+  <article id="readable-article">
+    <h1>Readable color fixture</h1>
+    <p id="first-paragraph">WPZ-READABLE-COLOR-MARKER. Normal body text must remain dark and readable on white paper.</p>
+    <p>A <a href="https://example.com/reference">blue reference link</a> and a code block retain their distinct styling.</p>
+    <pre><code>const readable = true;</code></pre>
+    <p>Additional deterministic prose gives Readability enough structure to build an owned paper document without relying on a live website.</p>
+    <p>The export must preserve contrast, content order, vector text, and the original page after capture.</p>
+    <p>Final fixture paragraph: WPZ-READABLE-COLOR-TAIL.</p>
+  </article>
+</main>
+<script>
+  // E2E-only audit trail: capture computed colours at fixture load, while an
+  // owned export root exists, and after restoration. MutationObserver runs in
+  // the page world but observes DOM/style work performed by the extension's
+  // isolated world; entries are capped so this cannot grow without bound.
+  (() => {
+    const audit = (window.__wpzColorAudit = []);
+    let queued = false;
+    const visitDarkReader = (root) => {
+      const rows = Array.from(root.querySelectorAll('style.darkreader, link.darkreader'));
+      for (const el of root.querySelectorAll('*')) {
+        if (el.shadowRoot) rows.push(...visitDarkReader(el.shadowRoot));
+      }
+      return rows;
+    };
+    const sample = (label) => {
+      if (audit.length >= 80) return;
+      const source = document.getElementById('first-paragraph');
+      const host = document.querySelector('[data-wpz-paper-host], [data-wpz-materialized]');
+      const owned =
+        document.querySelector('[data-wpz-owned-selection-root], [data-wpz-holder]') ||
+        (host && host.shadowRoot && host.shadowRoot.querySelector('.doc p'));
+      const darkSheets = visitDarkReader(document);
+      audit.push({
+        label,
+        sourceColor: source ? getComputedStyle(source).color : null,
+        bodyColor: getComputedStyle(document.body).color,
+        bodyBackground: getComputedStyle(document.body).backgroundColor,
+        ownedColor: owned ? getComputedStyle(owned).color : null,
+        ownedText: owned ? (owned.textContent || '').trim().slice(0, 80) : null,
+        darkSheets: darkSheets.length,
+        darkSheetsDisabled: darkSheets.filter((node) => node.sheet && node.sheet.disabled).length,
+      });
+      document.documentElement.setAttribute('data-wpz-color-audit', JSON.stringify(audit));
+    };
+    const observer = new MutationObserver((records) => {
+      if (!records.some((record) => record.attributeName !== 'data-wpz-color-audit')) return;
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        sample('mutation');
+      });
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+    sample('initial');
+  })();
+</script>

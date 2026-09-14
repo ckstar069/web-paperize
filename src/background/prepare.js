@@ -34,6 +34,39 @@ export function beginCaptureState() {
   return true;
 }
 
+/**
+ * Temporarily suspends Dark Reader's generated styles for owned light-paper
+ * captures. Dark Reader rewrites author colours for a dark background; the
+ * Element, Selection, Paperized and adapter paths then deliberately isolate
+ * their content onto white paper. Keeping the rewritten light foreground while
+ * replacing only the background makes the PDF unreadable.
+ *
+ * Disable the generated stylesheets themselves rather than overwriting page
+ * colours. This restores the site's original CSS, preserves links/code/accent
+ * colours, works inside open owned shadow roots, and is exactly reversible.
+ * The function is intentionally idempotent because a paper/adapter shadow root
+ * can be created after the document-level sheets were first suspended.
+ */
+export function suspendDarkReader() {
+  const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
+  if (!document.documentElement.hasAttribute('data-darkreader-mode')) return 0;
+  store.suspendedStyleSheets = store.suspendedStyleSheets || [];
+
+  const alreadyOwned = (node) => store.suspendedStyleSheets.some((entry) => entry.node === node);
+  const visit = (root) => {
+    for (const node of root.querySelectorAll('style.darkreader, link.darkreader')) {
+      if (alreadyOwned(node) || !node.sheet) continue;
+      store.suspendedStyleSheets.push({ node, disabled: Boolean(node.sheet.disabled) });
+      node.sheet.disabled = true;
+    }
+    for (const element of root.querySelectorAll('*')) {
+      if (element.shadowRoot) visit(element.shadowRoot);
+    }
+  };
+  visit(document);
+  return store.suspendedStyleSheets.length;
+}
+
 /** Measures the real painted size of the document, taking overhang into account. */
 export function measurePage() {
   const de = document.documentElement;
@@ -555,5 +588,17 @@ export function restorePage() {
     }
     store.startScroll = null;
   }
+  // Restore Dark Reader only after the owned white paper and all journalled
+  // light-background mutations are gone, avoiding a transient light-on-white
+  // flash on the live page.
+  for (let i = (store.suspendedStyleSheets || []).length - 1; i >= 0; i -= 1) {
+    const entry = store.suspendedStyleSheets[i];
+    try {
+      if (entry.node && entry.node.sheet) entry.node.sheet.disabled = entry.disabled;
+    } catch {
+      /* stylesheet disappeared, nothing to restore */
+    }
+  }
+  store.suspendedStyleSheets = [];
   return true;
 }

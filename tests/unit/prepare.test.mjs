@@ -10,6 +10,7 @@ import * as prep from '../../src/background/prepare.js';
 // are covered by the browser harness (tests/tools/build-harness.py).
 const INJECTED = [
   'beginCaptureState',
+  'suspendDarkReader',
   'measurePage',
   'primePage',
   'declutterPage',
@@ -37,6 +38,55 @@ test('injected functions address the shared store via window, never globals', ()
     const source = prep[name].toString();
     assert.match(source, /window\.__wpz__/);
   }
+});
+
+test('owned light-paper capture suspends Dark Reader sheets and restores them exactly', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM(
+    `<!DOCTYPE html><html data-darkreader-mode="dynamic"><head>
+       <style class="darkreader darkreader--user-agent">body { color: #eee; }</style>
+     </head><body><div id="host"></div></body></html>`,
+    { url: 'https://example.local/x', runScripts: 'outside-only' }
+  );
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  run(prep.beginCaptureState);
+
+  const documentSheet = win.document.querySelector('style.darkreader').sheet;
+  assert.equal(documentSheet.disabled, false);
+  assert.equal(run(prep.suspendDarkReader), 1);
+  assert.equal(documentSheet.disabled, true);
+
+  const host = win.document.getElementById('host');
+  const shadow = host.attachShadow({ mode: 'open' });
+  shadow.innerHTML = '<style class="darkreader darkreader--sync">p { color: #eee; }</style><p>owned</p>';
+  const shadowStyle = shadow.querySelector('style.darkreader');
+  // jsdom does not attach a CSSStyleSheet to <style> inside ShadowRoot;
+  // supply the same disabled surface that Chrome exposes.
+  const shadowSheet = { disabled: false };
+  Object.defineProperty(shadowStyle, 'sheet', { value: shadowSheet });
+  assert.equal(run(prep.suspendDarkReader), 2, 'second scan owns a newly-created shadow stylesheet');
+  assert.equal(documentSheet.disabled, true);
+  assert.equal(shadowSheet.disabled, true);
+
+  run(prep.restorePage);
+  assert.equal(documentSheet.disabled, false);
+  assert.equal(shadowSheet.disabled, false);
+  assert.equal(win.__wpz__.suspendedStyleSheets.length, 0);
+});
+
+test('Dark Reader suspension is a no-op without its document marker', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM('<!DOCTYPE html><html><head><style class="darkreader">body { color: red; }</style></head><body></body></html>', {
+    url: 'https://example.local/x', runScripts: 'outside-only',
+  });
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  run(prep.beginCaptureState);
+  const sheet = win.document.querySelector('style').sheet;
+  assert.equal(run(prep.suspendDarkReader), 0);
+  assert.equal(sheet.disabled, false);
+  run(prep.restorePage);
 });
 
 // ---------------------------------------------------------------------------
