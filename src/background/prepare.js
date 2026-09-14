@@ -430,9 +430,11 @@ export function isolateElement() {
     setProp(parent, 'max-height', 'none');
     setProp(parent, 'height', 'auto');
     if (parent !== document.body && parent !== document.documentElement) {
-      setProp(parent, 'padding', '0');
-      setProp(parent, 'margin', '0');
-      setProp(parent, 'border', '0');
+      for (const p of ['padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+                       'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+                       'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width']) {
+        setProp(parent, p, '0');
+      }
       setProp(parent, 'width', 'auto');
     }
     node = parent;
@@ -441,15 +443,19 @@ export function isolateElement() {
 
   for (const el of [document.documentElement, document.body]) {
     if (!el) continue;
-    setProp(el, 'margin', '0');
-    setProp(el, 'padding', '0');
-    setProp(el, 'background', '#ffffff');
+    for (const p of ['margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+                     'padding-top', 'padding-right', 'padding-bottom', 'padding-left']) {
+      setProp(el, p, '0');
+    }
+    setProp(el, 'background-color', '#ffffff');
     setProp(el, 'height', 'auto');
     setProp(el, 'min-height', '0');
     setProp(el, 'overflow-x', 'visible');
     setProp(el, 'overflow-y', 'visible');
   }
-  setProp(target, 'margin', '0');
+  for (const p of ['margin-top', 'margin-right', 'margin-bottom', 'margin-left']) {
+    setProp(target, p, '0');
+  }
 
   // Shrink the document to the target so the sheet is not mostly blank.
   const first = target.getBoundingClientRect();
