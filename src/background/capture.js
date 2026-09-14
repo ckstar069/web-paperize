@@ -14,7 +14,9 @@ import * as cdp from './cdp.js';
 import * as prep from './prepare.js';
 import { getAdapter } from '../adapter/index.js';
 import { paperizeCapture } from './paperize.js';
+
 import {
+  normalizeLayoutMode,
   paperInches,
   marginInches,
   computeFitScale,
@@ -24,6 +26,41 @@ import {
   CSS_PX_PER_INCH,
 } from './util.js';
 import { base64ChunksToBytes, base64ToBytes } from './download.js';
+
+/**
+ * Whole Page engine resolution (Case #2 Auto Productization). Pure — the
+ * unit tests cover the full precedence table. Element/Selection and the
+ * dedicated adapters outrank the layout modes; forceGeneric means the
+ * explicit visible-page export, which stays Original.
+ */
+export function resolveEngine({ adapterScope, elementScope, forceGeneric, layoutMode }) {
+  if (adapterScope) return 'adapter';
+  if (elementScope) return 'original'; // element/selection: existing path, no detector
+  if (forceGeneric) return 'original'; // "Save visible page" menu: Original by definition
+  const mode = layoutMode === 'paperized' || layoutMode === 'original' ? layoutMode : 'auto';
+  return mode; // 'auto' resolves later via the detector
+}
+
+/**
+ * Auto fallback classification. Only Paperized-internal failures on a still
+ * healthy, unchanged, user-uninterrupted capture may silently retry as
+ * Original. Everything terminal (tab closed, debugger bar dismissed,
+ * external detach, navigation) must surface as-is.
+ */
+export function isSafeAutoFallback({ detachReason, urlChanged }) {
+  if (detachReason) return false; // target_closed | canceled_by_user | external detach
+  if (urlChanged) return false; // the page left mid-capture; a retry is a different export
+  return true;
+}
+
+export class AutoLowSignal extends Error {
+  constructor(detection) {
+    super('Auto: detector LOW — Original layout');
+    this.name = 'AutoLowSignal';
+    this.wpzAutoLow = true;
+    this.detection = detection;
+  }
+}
 
 export const BASE_CSS = `
   * { animation-play-state: paused !important; transition: none !important; }
@@ -100,11 +137,6 @@ async function inject(tabId, func, args = []) {
 export async function capturePage(tabId, settings, options = {}) {
   const onProgress = options.onProgress || (() => {});
   const scope = options.scope || 'page';
-  // Paperized layout (Case #2 G1): own engine, own page-side contract; the
-  // Original path below stays byte-identical for non-paperized exports.
-  if (options.layout === 'paperized') {
-    return paperizeCapture(tabId, settings, options);
-  }
   return cdp.withDebugger(tabId, async () => {
     const startUrl = await inject(tabId, () => location.href);
     // Everything below — including the zoom normalisation itself — lives
@@ -157,6 +189,12 @@ export async function capturePage(tabId, settings, options = {}) {
       // The adapter must not change the sheet FORM: one-sheet stays opt-in via
       // the user's checkbox (review item 2).
       const singleSheetRequested = elementScope || Boolean(settings.singlePage);
+      // Layout reporting (Case #2 Auto): every path returns the four fields.
+      // The adapter branch shares the final return; the generic branch
+      // replaces this with its engine-resolution result below.
+      let layoutMeta = adapterScope
+        ? { requestedLayout: 'original', actualLayout: 'adapter', autoDecision: null, autoFallback: false }
+        : null;
       let region = null;
       const printCssFor = (oneSheet) =>
         elementScope
@@ -205,6 +243,61 @@ export async function capturePage(tabId, settings, options = {}) {
           regionHeight: Math.round(region.height),
         });
       } else {
+      // Whole Page engine selection (Case #2 Auto Productization). Adapter
+      // scope was handled above; element/selection and forceGeneric keep the
+      // generic Original pipeline. Otherwise the layout mode decides, with
+      // Auto probing the detector on the paperized extraction itself.
+      const engine = resolveEngine({
+        adapterScope: false,
+        elementScope,
+        forceGeneric: options.forceGeneric,
+        layoutMode: options.layout ? normalizeLayoutMode(options.layout) : normalizeLayoutMode(settings.layoutMode),
+      });
+      let autoMeta = null; // { autoDecision, autoFallback }
+      if (engine === 'paperized' || engine === 'auto') {
+        const nestedOptions = {
+          onProgress,
+          ...(engine === 'auto' ? { autoProbe: true, onAutoDecision: (d) => { autoMeta = { autoDecision: d.decision, autoFallback: false }; } } : {}),
+        };
+        try {
+          const paperized = await paperizeCapture(tabId, settings, nestedOptions);
+          return {
+            bytes: paperized.bytes,
+            metrics: {
+              ...paperized.metrics,
+              requestedLayout: engine === 'auto' ? 'auto' : 'paperized',
+              actualLayout: 'paperized',
+              autoDecision: engine === 'auto' ? 'paperized' : null,
+              autoFallback: false,
+            },
+          };
+        } catch (err) {
+          const terminal =
+            err && err.wpzAutoLow
+              ? false // LOW is not an error: restore already ran, fall through
+              : !isSafeAutoFallback({
+                  detachReason: options.detachReasonOf ? options.detachReasonOf(tabId) : undefined,
+                  urlChanged: (await inject(tabId, () => location.href).catch(() => null)) !== startUrl,
+                });
+          if (err && err.wpzAutoLow) {
+            autoMeta = { autoDecision: 'original', autoFallback: false };
+            onProgress('Auto: keeping the original layout');
+          } else if (engine === 'auto' && !terminal) {
+            // Paperized-specific failure on a healthy capture: the nested
+            // finally fully restored the page, so one Original retry is safe.
+            autoMeta = { autoDecision: 'paperized', autoFallback: true };
+            onProgress('Paperized failed safely — retrying with the original layout');
+          } else {
+            throw err; // forced-paperized failure, or terminal: surface as-is
+          }
+        }
+      }
+      layoutMeta = {
+        requestedLayout: engine === 'auto' ? 'auto' : engine || 'original',
+        actualLayout: 'original',
+        autoDecision: autoMeta ? autoMeta.autoDecision : null,
+        autoFallback: autoMeta ? autoMeta.autoFallback : false,
+      };
       onProgress('Loading the whole page');
       await inject(tabId, prep.primePage, [{
         // forceGeneric promises "the currently loaded content" and
@@ -427,7 +520,7 @@ export async function capturePage(tabId, settings, options = {}) {
 
       return {
         bytes,
-        metrics: { ...metrics, zoom, orientation: plan.orientation, scale: plan.scale, scope, oneSheet, fallbackReason },
+        metrics: { ...metrics, zoom, orientation: plan.orientation, scale: plan.scale, scope, oneSheet, fallbackReason, ...layoutMeta },
       };
     } finally {
       // Navigation during the capture destroys the isolated world (and with it

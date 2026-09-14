@@ -19,6 +19,7 @@ import * as prep from './prepare.js';
 import { BASE_CSS } from './capture.js';
 import { base64ChunksToBytes, base64ToBytes } from './download.js';
 import { PAPER_CSS } from './paper-css.js';
+import { collectDetectSignals, detectPaperizable } from './paper-detect.js';
 import {
   extractPaperArticle,
   buildPaperDocument,
@@ -103,13 +104,41 @@ export async function paperizeCapture(tabId, settings, options = {}) {
       if (!extracted || !extracted.ok) {
         throw new Error(`Paperized extraction failed: ${extracted ? extracted.error : 'no-result'}`);
       }
-      console.log('[wpz] paperize extract:', {
-        textLength: extracted.model.textLength,
-        title: extracted.model.title,
-        scorerRoot: extracted.diagnostics.scorer ? extracted.diagnostics.scorer.id || extracted.diagnostics.scorer.tag : null,
-        readerable: extracted.diagnostics.isProbablyReaderable,
-        tailPruned: extracted.diagnostics.tailPruning ? extracted.diagnostics.tailPruning.prunedCount : 0,
-      });
+      if (options.autoProbe) {
+        // Auto (content-first): decide on the SAME extraction — no double work.
+        // Detector LOW aborts here with the page fully restored by the finally
+        // below, so the caller can fall through to the Original engine.
+        const docSignals = await inject(tabId, collectDetectSignals);
+        const detection = detectPaperizable({
+          readability: {
+            ok: true,
+            textLength: extracted.diagnostics.readability.textLength,
+            isProbablyReaderable: extracted.diagnostics.isProbablyReaderable,
+          },
+          scorer: {
+            ok: Boolean(extracted.diagnostics.scorer),
+            textLength: extracted.diagnostics.scorer ? extracted.diagnostics.scorer.textLength : 0,
+          },
+          subjectOverlap: extracted.diagnostics.subjectOverlap || { hits: 0 },
+          content: extracted.diagnostics.contentStats || {},
+          document: (docSignals && docSignals.document) || {},
+          semantic: extracted.diagnostics.semantic || {},
+        });
+        options.onAutoDecision && options.onAutoDecision(detection);
+        if (detection.decision !== 'paperized') {
+          const err = new Error('Auto: detector LOW — Original layout');
+          err.wpzAutoLow = true;
+          err.detection = detection;
+          throw err;
+        }
+      }
+      if (settings.debugPaperize) {
+        console.log('[wpz] paperize extract:', {
+          textLength: extracted.model.textLength,
+          title: extracted.model.title,
+          tailPruned: extracted.diagnostics.tailPruning ? extracted.diagnostics.tailPruning.prunedCount : 0,
+        });
+      }
 
       onProgress('Building the paper document');
       stage.at = 'build';
@@ -176,7 +205,6 @@ export async function paperizeCapture(tabId, settings, options = {}) {
         paper: 'a4',
         images: built.images,
         textLength: extracted.model.textLength,
-        layout: 'paperized',
       };
       return { bytes, metrics };
     } finally {

@@ -56,14 +56,18 @@ async function runCapture(tab, { scope = 'page', forceGeneric = false, layout = 
       scope,
       forceGeneric,
       layout,
+      detachReasonOf: (tabId) => detachedExternally.get(tabId),
       onProgress: (text, progress) => toPopup({ action: 'progress', text, progress }),
     });
     const filename = buildFilename(settings.filenameTemplate, metrics);
     const saved = await savePdf(bytes, { filename });
     setBadge('OK', '#0d9488');
     clearBadgeSoon();
-    toPopup({ action: 'done', result: { ...saved, title: metrics.title, url: metrics.url } });
-    return { ...saved, title: metrics.title, url: metrics.url };
+    const layoutInfo = metrics && metrics.actualLayout
+      ? { requestedLayout: metrics.requestedLayout, actualLayout: metrics.actualLayout, autoFallback: Boolean(metrics.autoFallback) }
+      : null;
+    toPopup({ action: 'done', result: { ...saved, title: metrics.title, url: metrics.url, layout: layoutInfo } });
+    return { ...saved, title: metrics.title, url: metrics.url, layout: layoutInfo };
   } catch (error) {
     let message = error && error.message ? error.message : 'Export failed.';
     const detachReason = detachedExternally.get(tab.id);

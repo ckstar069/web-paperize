@@ -19,6 +19,11 @@ export const PAPER_SIZES = {
  */
 export const MAX_CONTINUOUS_INCHES = 200;
 
+/** Whole Page layout mode (Case #2 Auto): stored values normalize to 'auto'. */
+export function normalizeLayoutMode(value) {
+  return value === 'paperized' || value === 'original' ? value : 'auto';
+}
+
 export const MARGIN_PRESETS = {
   none: { label: 'None', value: 0 },
   slim: { label: 'Slim', value: 0.2 },

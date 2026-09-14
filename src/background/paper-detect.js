@@ -51,13 +51,16 @@ export function collectDetectSignals() {
   };
 }
 
-// Coarse thresholds; calibrated on the G2 golden set (16 pages, 2026-09-14).
+// Coarse thresholds; calibrated on the G2.1 golden set (24 pages incl.
+// adversarial samples, 2026-09-14).
 // CJK articles measure 2.4k–11k extracted chars; the shortest positive
 // (cnblogs) sits at ~3k, so 700 leaves headroom without admitting card grids.
 const THRESHOLDS = {
   minReadabilityText: 700,
   // scorer and Readability must point at the SAME subject: their extracted
-  // text lengths within 2× of each other.
+  // text lengths within 3× of each other (2× rejected long docs pages whose
+  // structural root covers only part of the document; measured 2.37× legit
+  // vs 5.13× reject).
   maxSubjectDivergence: 3.0,
   minParagraphs: 4,
   minAvgParagraphLength: 40,
@@ -74,7 +77,7 @@ const THRESHOLDS = {
  *   s.content {textLength, linkDensity, paragraphCount}  (paper-doc shape, primary)
  *   s.subjectOverlap {hits: 0..3}  (anchors of the content found in the scorer root)
  *   s.semantic {article, main, roleMain}
- *   s.document {...} (site-chrome context, not gating)
+ *   s.document {...} (site-chrome context; gates only not-a-link-shell)
  * @returns {{decision:'paperized'|'original', confidence:'high'|'low', reasons:Array, signals:Object}}
  */
 export function detectPaperizable(s) {

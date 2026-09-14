@@ -6,8 +6,11 @@
  * for V0.3 and deliberately not modelled yet.
  */
 
+export { normalizeLayoutMode } from './util.js';
 export const DEFAULTS = {
   paper: 'a4', // 'a4' | 'letter'
+  layoutMode: 'auto', // 'auto' | 'paperized' | 'original' — Whole Page only (Case #2 Auto Productization)
+  /** normalizeLayoutMode() guards stored values; unknown falls back to 'auto'. */
   orientation: 'auto', // 'auto' | 'portrait' | 'landscape'
   margin: 'slim', // 'none' | 'slim' | 'normal' | 'wide'
   fitWidth: true,
