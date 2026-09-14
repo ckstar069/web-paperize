@@ -194,6 +194,7 @@ test('Selection holder lifecycle resets cleanly for a subsequent selection captu
   assert.ok(run(prep.isolateSelection));
   const firstHolder = win.__wpz__.pickedElement;
   assert.ok(firstHolder.matches('[data-wpz-holder]'));
+  assert.equal(firstHolder.parentElement, win.document.body, 'selection root is owned at body level');
   run(prep.restorePage);
   assert.equal(firstHolder.isConnected, false);
   assert.equal(win.__wpz__.pickedElement, null);
@@ -205,4 +206,126 @@ test('Selection holder lifecycle resets cleanly for a subsequent selection captu
   run(prep.restorePage);
   assert.equal(secondHolder.isConnected, false);
   assert.equal(win.__wpz__.pickedElement, null);
+});
+
+test('Selection exact range: first sentence appears once without its unselected sibling', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM('<!DOCTYPE html><html><body><p id="source">Sentence A. Sentence B.</p></body></html>', {
+    url: 'https://example.local/x', runScripts: 'outside-only',
+  });
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  run(prep.beginCaptureState);
+  const source = win.document.getElementById('source');
+  const before = source.outerHTML;
+  const range = win.document.createRange();
+  range.setStart(source.firstChild, 0);
+  range.setEnd(source.firstChild, 'Sentence A.'.length);
+  const selection = win.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  assert.ok(run(prep.isolateSelection));
+  const holder = win.__wpz__.pickedElement;
+  assert.equal(holder.textContent, 'Sentence A.');
+  assert.equal(holder.textContent.match(/Sentence A\./g).length, 1);
+  assert.doesNotMatch(holder.textContent, /Sentence B/);
+  assert.ok(run(prep.isolateElement));
+  run(prep.restorePage);
+  assert.equal(source.outerHTML, before);
+  assert.equal(win.__wpz__.pickedElement, null);
+  assert.equal(win.__wpz__.injected.length, 0);
+});
+
+test('Selection exact range: middle of one Text node exports only the selected characters', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM('<!DOCTYPE html><html><body><p id="source">abcdef</p></body></html>', {
+    url: 'https://example.local/x', runScripts: 'outside-only',
+  });
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  run(prep.beginCaptureState);
+  const text = win.document.getElementById('source').firstChild;
+  const range = win.document.createRange();
+  range.setStart(text, 2);
+  range.setEnd(text, 5);
+  const selection = win.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  assert.ok(run(prep.isolateSelection));
+  assert.equal(win.__wpz__.pickedElement.textContent, 'cde');
+  run(prep.restorePage);
+});
+
+test('Selection exact range: inline markup, links, and images survive a partial cross-inline range', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM('<!DOCTYPE html><html><body><p id="source">Hello <strong>beautiful</strong> <a href="/docs"><span>linked</span><img alt="dot" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></a> world</p></body></html>', {
+    url: 'https://example.local/x', runScripts: 'outside-only',
+  });
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  run(prep.beginCaptureState);
+  const source = win.document.getElementById('source');
+  const range = win.document.createRange();
+  range.setStart(source.firstChild, 3);
+  range.setEnd(source.lastChild, 3);
+  const selection = win.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  assert.ok(run(prep.isolateSelection));
+  const holder = win.__wpz__.pickedElement;
+  assert.equal(holder.textContent, 'lo beautiful linked wo');
+  assert.equal(holder.querySelector('strong').textContent, 'beautiful');
+  assert.equal(holder.querySelector('a').getAttribute('href'), '/docs');
+  assert.equal(holder.querySelector('a span').textContent, 'linked');
+  assert.equal(holder.querySelector('img').getAttribute('alt'), 'dot');
+  run(prep.restorePage);
+});
+
+test('Selection exact range: cross-paragraph selection excludes both unselected ends', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM(
+    '<!DOCTYPE html><html><body><article id="source"><p>DROP-START keep from first</p><p>keep from second DROP-END</p></article></body></html>',
+    { url: 'https://example.local/x', runScripts: 'outside-only' }
+  );
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  run(prep.beginCaptureState);
+  const source = win.document.getElementById('source');
+  const before = source.outerHTML;
+  const [first, second] = source.querySelectorAll('p');
+  const range = win.document.createRange();
+  range.setStart(first.firstChild, 'DROP-START '.length);
+  range.setEnd(second.firstChild, 'keep from second'.length);
+  const selection = win.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  assert.ok(run(prep.isolateSelection));
+  const holder = win.__wpz__.pickedElement;
+  assert.equal(holder.textContent, 'keep from firstkeep from second');
+  assert.equal(holder.querySelectorAll('p').length, 2);
+  assert.doesNotMatch(holder.textContent, /DROP-START|DROP-END/);
+  assert.ok(run(prep.isolateElement));
+  run(prep.restorePage);
+  assert.equal(source.outerHTML, before);
+  assert.equal(win.__wpz__.pickedElement, null);
+});
+
+test('Selection exact range: collapsed selection fails without creating an owned root', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM('<!DOCTYPE html><html><body><p id="source">abcdef</p></body></html>', {
+    url: 'https://example.local/x', runScripts: 'outside-only',
+  });
+  const win = dom.window;
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  run(prep.beginCaptureState);
+  const text = win.document.getElementById('source').firstChild;
+  const range = win.document.createRange();
+  range.setStart(text, 3);
+  range.collapse(true);
+  const selection = win.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  assert.equal(run(prep.isolateSelection), null);
+  assert.equal(win.document.querySelector('[data-wpz-owned-selection-root]'), null);
 });

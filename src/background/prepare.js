@@ -513,22 +513,42 @@ export function isolateElement() {
   };
 }
 
-/** Lifts the current selection into a standalone block, then isolates it. */
+/** Lifts the exact current Range into an owned top-level export root. */
 export function isolateSelection() {
   const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
   const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !document.body) return null;
 
   const holder = document.createElement('div');
   holder.setAttribute('data-wpz-holder', '');
+  holder.setAttribute('data-wpz-owned-selection-root', '');
   holder.style.cssText = 'padding:10px;margin:0;background:#fff;'; // 10px gutter: CJK glyph paint exceeds the layout box slightly and a tight fit sheet clipped the first character (user-verified);
+
+  // A top-level holder no longer inherits from the selection's original
+  // ancestor. Copy only inherited typography/presentation properties from the
+  // common ancestor; cloned inline elements keep their own structure/styles.
+  const anchor = selection.getRangeAt(0).commonAncestorContainer;
+  const source = anchor.nodeType === 1 ? anchor : anchor.parentElement;
+  if (source) {
+    const computed = getComputedStyle(source);
+    for (const property of [
+      'color', 'font-family', 'font-size', 'font-style', 'font-variant',
+      'font-weight', 'font-stretch', 'line-height', 'letter-spacing',
+      'text-align', 'text-decoration', 'text-indent', 'text-transform',
+      'white-space', 'word-break', 'overflow-wrap', 'direction',
+      '-webkit-text-fill-color',
+    ]) {
+      const value = computed.getPropertyValue(property);
+      if (value) holder.style.setProperty(property, value);
+    }
+  }
   for (let i = 0; i < selection.rangeCount; i += 1) {
     holder.appendChild(selection.getRangeAt(i).cloneContents());
   }
-  // Anchor it inside the original container so inherited styling still applies.
-  const anchor = selection.getRangeAt(0).commonAncestorContainer;
-  const host = (anchor.nodeType === 1 ? anchor : anchor.parentElement) || document.body;
-  host.appendChild(holder);
+  // Keep the source subtree and its unselected text entirely outside the
+  // printable root. isolateElement() can now hide the source as a body sibling
+  // instead of trying (and failing) to hide sibling Text nodes in its parent.
+  document.body.appendChild(holder);
 
   store.injected.push(holder);
   store.pickedElement = holder;
