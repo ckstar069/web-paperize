@@ -130,7 +130,7 @@ web-paperize/
 ## 7. 演进预留（不在 V0.1 实现）
 
 - V0.2：snapshot 双引擎（借鉴 page2pdf `pdf-writer.js`）、元素/选区导出（picker + isolateElement 模式）、单张连续长页（测量法 + 200in 上限 + 二分兜底）、HUD 进度药丸、页眉页脚模板。
-- V0.3：网站 preset（settings 增加 `presets[host]`）、readability Article Mode（vendor + print 样式）、批量/后台标签页导出（需评估 tabs 权限代价）。
+- 后续（历史 V0.3 roadmap，部分已由 Case #2 超越）：网站 preset（`presets[host]`）与批量/后台导出仍在候选；readability Article Mode 已由 Paperized 布局（附录 A/B）落地，不再单列。
 
 ---
 
@@ -204,8 +204,37 @@ detectPaperizable(signals)
 
 extractPaperArticle 的 diagnostics 新增 `contentStats`（提取内容 text/linkDensity/proseBlocks）、`subjectOverlap`（锚点+命中）、`scorer.rootText`——全部在 sanitize/prune 之后计算，只增加观测信息，不改变 Paper model 输出（确定性回归见 paper-detect.test.mjs）。
 
-## TODO（G1 遗留，非阻塞）
+## TODO（遗留，非阻塞）
 
-- 老 V0.3 roadmap 段落已过时（Paperized+Readability 已落地）。
-- Paperized 纸张契约：正式暴露时建议 A4/Letter、不支持 Fit/Continuous。
-- paperize extract 的 console.log 产品化后收敛为 debug 开关。
+- Paperized 纸张契约：A4/Letter、portrait、paginated（不支持 Fit/Continuous/landscape）——已在本轮 Auto Productization 实现并固化于 popup 兼容逻辑。
+- paperize extract 的 console.log 收敛为 debug 开关。（原"老 V0.3 roadmap 过时"项已在正文清理。）
+
+---
+
+# 附录 C：Auto 产品化（Case #2 收官，2026-09-14）
+
+Whole Page 默认 **Layout: Auto（content-first）**：detector HIGH → Paperized；LOW → Original。README 主导的 repo 等 mixed 页面按 v1 策略允许 Paperized（detector 已证明强单一阅读主体；用户需要完整 UI 时显式选 Original，不做 hostname 特判）。
+
+## 引擎优先级
+
+```
+Element / Selection → 既有路径（不进 detector）
+Whole Page:
+  专用 Adapter（如 ChatGPT）且未 forceGeneric → Adapter（V0.2.1 行为不变）
+  否则 layoutMode: auto | paperized | original
+    auto      → Detector（与 Paperized 提取共用同一次计算）
+    paperized → Paperized（失败直接报错，不静默回退）
+    original  → Original
+```
+
+## Auto fallback 分类
+
+仅"Paperized 内部失败且捕获仍健康"才安全回退 Original（嵌套 finally 已完整还原页面）。终态不回退：target_closed、canceled_by_user、外部 detach、捕获中导航。
+
+## 结果可见性
+
+每次导出 metrics 携带 requestedLayout / actualLayout / autoDecision / autoFallback；popup 状态行显示 `Saved xxx.pdf · Paperized / Original / Original (Auto fallback)`。日常使用即 G2 的真实 Golden Set。
+
+## Paperized 纸张契约（正式）
+
+A4/Letter、portrait、paginated。不支持 Fit/Continuous/landscape——forced Paperized 时 popup 禁用不兼容控件并提示；Auto 下这些控件保持可编辑（Original 兜底仍会用到）。

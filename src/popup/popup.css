@@ -123,3 +123,10 @@ footer {
   font-size: 11px;
   color: rgba(128, 128, 128, 0.9);
 }
+
+.hint {
+  font-size: 11px;
+  color: #64748b;
+  margin: -6px 0 8px;
+  line-height: 1.35;
+}

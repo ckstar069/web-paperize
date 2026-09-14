@@ -49,6 +49,8 @@ async function init() {
     state.tab = response.tab;
     const s = response.settings;
     $('paper').value = s.paper;
+    $('layoutMode').value = s.layoutMode || 'auto';
+    applyLayoutCompat($('layoutMode').value);
     $('orientation').value = s.orientation;
     $('margin').value = s.margin;
     $('singlePage').checked = Boolean(s.singlePage);
@@ -66,6 +68,26 @@ async function init() {
     showStatus(error && error.message ? error.message : 'Extension state unavailable.', 'error');
   }
 }
+
+// Layout/controls compatibility (Case #2 Auto Productization): Paperized
+// output is always portrait and paginated, so its incompatible controls are
+// disabled; Auto keeps them editable because an Original fallback still
+// uses them. Forced Paperized failures surface as errors (no silent
+// fallback) — that policy lives in the capture engine, not here.
+function applyLayoutCompat(mode) {
+  const locked = mode === 'paperized';
+  $('orientation').disabled = locked;
+  $('singlePage').disabled = locked;
+  $('layoutHint').textContent = locked
+    ? 'Paperized: reformats the main reading content for paper (portrait, paginated).'
+    : mode === 'original'
+      ? 'Original: preserves the webpage layout.'
+      : 'Auto: uses Paperized for reliable reading content; otherwise preserves the page.';
+}
+
+$('layoutMode').addEventListener('change', () => {
+  applyLayoutCompat($('layoutMode').value);
+});
 
 document.querySelectorAll('select').forEach((el) => {
   el.addEventListener('change', () => {
@@ -118,8 +140,13 @@ chrome.runtime.onMessage.addListener((message) => {
     showProgress(message.text, message.progress);
   }
   if (message.action === 'done') {
-    const { filename, size } = message.result || {};
-    showStatus(`Saved ${filename} (${Math.max(1, Math.round((size || 0) / 1024))} kB)`, 'ok');
+    const { filename, size, layout } = message.result || {};
+    let suffix = '';
+    if (layout && layout.actualLayout) {
+      const actual = layout.actualLayout === 'adapter' ? 'Original (adapter)' : layout.actualLayout === 'paperized' ? 'Paperized' : 'Original';
+      suffix = ` · ${actual}${layout.autoFallback ? ' (Auto fallback)' : ''}`;
+    }
+    showStatus(`Saved ${filename} (${Math.max(1, Math.round((size || 0) / 1024))} kB)${suffix}`, 'ok');
   }
   if (message.action === 'error') {
     showStatus(message.message || 'Export failed.', 'error');
