@@ -8,7 +8,12 @@ import {
   isSafeAutoFallback,
   AutoLowSignal,
 } from '../../src/background/capture.js';
-import { normalizeLayoutMode, DEFAULTS } from '../../src/background/settings.js';
+import {
+  normalizeLayoutMode,
+  DEFAULTS,
+  getDefaults,
+  setDefaults,
+} from '../../src/background/settings.js';
 import { normalizeLayoutMode as fromUtil } from '../../src/background/util.js';
 
 // ---------------------------------------------------------------------------
@@ -94,6 +99,14 @@ test('invalid stored layoutMode normalizes to auto (both exports agree)', () => 
   }
   assert.equal(normalizeLayoutMode('paperized'), 'paperized');
   assert.equal(normalizeLayoutMode('original'), 'original');
+});
+
+test('settings read/write normalization executes with a local helper binding', async () => {
+  const initial = await getDefaults();
+  assert.equal(initial.layoutMode, 'auto');
+
+  const updated = await setDefaults({ layoutMode: 'invalid' });
+  assert.equal(updated.layoutMode, 'auto');
 });
 
 test('D-proof: detector LOW is representable as an AutoLowSignal without being an error state', () => {

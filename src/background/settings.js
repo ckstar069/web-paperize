@@ -6,7 +6,9 @@
  * for V0.3 and deliberately not modelled yet.
  */
 
-export { normalizeLayoutMode } from './util.js';
+import { normalizeLayoutMode } from './util.js';
+
+export { normalizeLayoutMode };
 export const DEFAULTS = {
   paper: 'a4', // 'a4' | 'letter'
   layoutMode: 'auto', // 'auto' | 'paperized' | 'original' — Whole Page only (Case #2 Auto Productization)

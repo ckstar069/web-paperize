@@ -8,6 +8,7 @@
   .card { border: 1px solid #ccc; padding: 10px; margin: 6px 0; }
   a { color: #0645ad; }
   p { min-height: 400px; }
+  #counter { min-height: 160vh; }
 </style>
 </head>
 <body>
@@ -32,17 +33,19 @@
       p.textContent = 'growth round ' + window.__rounds;
       document.body.appendChild(p);
     }
-    var lastBottom = -1, sameBottom = 0;
+    // One completed top-to-bottom pass grows once. Returning to the top arms
+    // the next pass, so an accidental second traversal is observable as +1.
+    // Requiring repeated scroll events at the same clamped bottom is not
+    // portable: Chromium does not dispatch scroll when scrollY is unchanged.
+    var armed = true;
     window.addEventListener('scroll', function () {
       var bottom = window.scrollY + window.innerHeight;
       var docBottom = document.documentElement.scrollHeight;
-      if (docBottom - bottom < 60) {
-        if (bottom === lastBottom) {
-          sameBottom += 1;
-          if (sameBottom === 3) { grow(); sameBottom = 0; }
-        } else {
-          lastBottom = bottom; sameBottom = 0;
-        }
+      if (window.scrollY < 20) {
+        armed = true;
+      } else if (armed && docBottom - bottom < 60) {
+        armed = false;
+        grow();
       }
     });
   </script>
