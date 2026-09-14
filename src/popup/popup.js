@@ -143,7 +143,7 @@ chrome.runtime.onMessage.addListener((message) => {
     const { filename, size, layout } = message.result || {};
     let suffix = '';
     if (layout && layout.actualLayout) {
-      const actual = layout.actualLayout === 'adapter' ? 'Original (adapter)' : layout.actualLayout === 'paperized' ? 'Paperized' : 'Original';
+      const actual = layout.actualLayout === 'adapter' ? 'Complete content' : layout.actualLayout === 'paperized' ? 'Paperized' : 'Original';
       suffix = ` · ${actual}${layout.autoFallback ? ' (Auto fallback)' : ''}`;
     }
     showStatus(`Saved ${filename} (${Math.max(1, Math.round((size || 0) / 1024))} kB)${suffix}`, 'ok');

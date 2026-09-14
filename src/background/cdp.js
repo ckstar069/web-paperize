@@ -23,6 +23,20 @@ function lastError() {
   return err ? err.message : null;
 }
 
+/**
+ * The screen-media override is the product's core print contract (PDFs render
+ * the screen layout, not the site's @media print). Shared by both engines so
+ * their emulation config can never drift; the Auto fallback re-applies it
+ * because the nested paperized capture's finally clears the override.
+ */
+export async function applyScreenMedia(tabId) {
+  await send(tabId, 'Page.enable').catch(() => {});
+  return send(tabId, 'Emulation.setEmulatedMedia', {
+    media: 'screen',
+    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+  });
+}
+
 export function attach(tabId) {
   const entry = attached.get(tabId);
   if (entry) {

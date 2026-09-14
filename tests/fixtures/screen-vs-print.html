@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>WPZ screen-vs-print lifecycle fixture</title>
+<style>
+  /* Deliberately detector-LOW: a link card grid, no article. The page's
+     whole purpose is the screen/print divergence below. */
+  body { font-family: sans-serif; margin: 20px; }
+  .card { border: 1px solid #ccc; padding: 10px; margin: 6px 0; }
+  a { color: #0645ad; }
+  @media screen {
+    #screenOnly { display: block; }
+    #printOnly { display: none; }
+  }
+  @media print {
+    #screenOnly { display: none; }
+    #printOnly { display: block; }
+  }
+</style>
+</head>
+<body>
+  <div class="card"><a href="#">link card one</a></div>
+  <div class="card"><a href="#">link card two</a></div>
+  <div class="card"><a href="#">link card three</a></div>
+  <div class="card"><a href="#">link card four</a></div>
+  <div class="card"><a href="#">link card five</a></div>
+  <div class="card"><a href="#">link card six</a></div>
+  <div class="card"><a href="#">link card seven</a></div>
+  <div class="card"><a href="#">link card eight</a></div>
+  <p id="screenOnly">SCREEN-MARKER-EXPECTED</p>
+  <p id="printOnly">PRINT-MARKER-FORBIDDEN</p>
+</body>
+</html>

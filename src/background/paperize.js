@@ -52,6 +52,7 @@ export async function paperizeCapture(tabId, settings, options = {}) {
   const onProgress = options.onProgress || (() => {});
   // Stage breadcrumb: any throw is tagged with the step that failed.
   const stage = { at: 'start' };
+  const primedFlag = { done: false }; // set once primePage completes (outer scope for the catch)
   try {
     return await cdp.withDebugger(tabId, async () => {
     const startUrl = await inject(tabId, () => location.href);
@@ -73,11 +74,7 @@ export async function paperizeCapture(tabId, settings, options = {}) {
         await new Promise((r) => setTimeout(r, 150));
       }
 
-      await cdp.send(tabId, 'Page.enable').catch(() => {});
-      await cdp.send(tabId, 'Emulation.setEmulatedMedia', {
-        media: 'screen',
-        features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
-      });
+      await cdp.applyScreenMedia(tabId);
 
       onProgress('Loading the page content');
       stage.at = 'prime';
@@ -90,6 +87,7 @@ export async function paperizeCapture(tabId, settings, options = {}) {
           fontTimeout: settings.fontTimeout,
         },
       ]);
+      primedFlag.done = true;
 
       onProgress('Extracting the article');
       stage.at = 'extract';
@@ -129,6 +127,7 @@ export async function paperizeCapture(tabId, settings, options = {}) {
           const err = new Error('Auto: detector LOW — Original layout');
           err.wpzAutoLow = true;
           err.detection = detection;
+          err.primed = primedFlag.done;
           throw err;
         }
       }
@@ -202,7 +201,7 @@ export async function paperizeCapture(tabId, settings, options = {}) {
         url: extracted.model.sourceUrl,
         region: { width: Math.round(region.width), height: Math.round(region.height) },
         scale,
-        paper: 'a4',
+        paper: settings.paper === 'letter' ? 'letter' : 'a4',
         images: built.images,
         textLength: extracted.model.textLength,
       };
@@ -235,6 +234,9 @@ export async function paperizeCapture(tabId, settings, options = {}) {
     });
   } catch (error) {
     error.stage = stage.at;
+    // Auto fallback callers read this to decide whether the Original retry
+    // needs its own full-page scroll (the probe already did it).
+    if (error && typeof error === 'object' && !('primed' in error)) error.primed = primedFlag.done;
     throw error;
   }
 }

@@ -28,13 +28,17 @@ const cache = { defaults: null };
 async function read() {
   if (cache.defaults) return cache.defaults;
   const stored = await chrome.storage.local.get({ defaults: {} });
-  cache.defaults = { ...DEFAULTS, ...(stored.defaults || {}) };
+  const merged = { ...DEFAULTS, ...(stored.defaults || {}) };
+  merged.layoutMode = normalizeLayoutMode(merged.layoutMode);
+  cache.defaults = merged;
   return cache.defaults;
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.defaults) return;
-  cache.defaults = { ...DEFAULTS, ...(changes.defaults.newValue || {}) };
+  const merged = { ...DEFAULTS, ...(changes.defaults.newValue || {}) };
+  merged.layoutMode = normalizeLayoutMode(merged.layoutMode);
+  cache.defaults = merged;
 });
 
 export async function getDefaults() {
@@ -43,6 +47,7 @@ export async function getDefaults() {
 
 export async function setDefaults(patch) {
   const next = { ...(await read()), ...patch };
+  if ('layoutMode' in next) next.layoutMode = normalizeLayoutMode(next.layoutMode);
   cache.defaults = next;
   await chrome.storage.local.set({ defaults: next });
   return { ...next };

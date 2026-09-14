@@ -173,11 +173,7 @@ export async function capturePage(tabId, settings, options = {}) {
         await new Promise((r) => setTimeout(r, 150)); // let the reflow settle
       }
 
-      await cdp.send(tabId, 'Page.enable').catch(() => {});
-      await cdp.send(tabId, 'Emulation.setEmulatedMedia', {
-        media: 'screen',
-        features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
-      });
+      await cdp.applyScreenMedia(tabId);
 
       // Adapter policy (review 2026-09-10): the adapter is the DATA SOURCE for
       // complete conversations on page scope only — element/selection exports
@@ -193,7 +189,12 @@ export async function capturePage(tabId, settings, options = {}) {
       // The adapter branch shares the final return; the generic branch
       // replaces this with its engine-resolution result below.
       let layoutMeta = adapterScope
-        ? { requestedLayout: 'original', actualLayout: 'adapter', autoDecision: null, autoFallback: false }
+        ? {
+            requestedLayout: normalizeLayoutMode(settings.layoutMode),
+            actualLayout: 'adapter',
+            autoDecision: null,
+            autoFallback: false,
+          }
         : null;
       let region = null;
       const printCssFor = (oneSheet) =>
@@ -280,12 +281,16 @@ export async function capturePage(tabId, settings, options = {}) {
                   urlChanged: (await inject(tabId, () => location.href).catch(() => null)) !== startUrl,
                 });
           if (err && err.wpzAutoLow) {
-            autoMeta = { autoDecision: 'original', autoFallback: false };
+            autoMeta = { autoDecision: 'original', autoFallback: false, primed: Boolean(err.primed) };
+            // The nested paperized capture's finally CLEARED the screen-media
+            // override; the Original engine's contract depends on it.
+            await cdp.applyScreenMedia(tabId);
             onProgress('Auto: keeping the original layout');
           } else if (engine === 'auto' && !terminal) {
             // Paperized-specific failure on a healthy capture: the nested
             // finally fully restored the page, so one Original retry is safe.
-            autoMeta = { autoDecision: 'paperized', autoFallback: true };
+            autoMeta = { autoDecision: 'paperized', autoFallback: true, primed: Boolean(err.primed) };
+            await cdp.applyScreenMedia(tabId);
             onProgress('Paperized failed safely — retrying with the original layout');
           } else {
             throw err; // forced-paperized failure, or terminal: surface as-is
@@ -304,7 +309,10 @@ export async function capturePage(tabId, settings, options = {}) {
         // element/selection capture a picked region — neither should disturb
         // the page with a full scroll-through (virtualized sites would
         // load/unload history underneath the user).
-        scrollThrough: !(options.forceGeneric || elementScope),
+        // Auto LOW / safe fallback after a completed probe: the probe already
+        // scrolled the whole page once (and its side effects are unrestorable
+        // by contract) — a second traversal only grows feeds further.
+        scrollThrough: !(options.forceGeneric || elementScope) && !(autoMeta && autoMeta.primed),
         scrollDelay: settings.scrollDelay,
         imageTimeout: settings.imageTimeout,
         fontTimeout: settings.fontTimeout,

@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>WPZ scroll-growth lifecycle fixture</title>
+<style>
+  body { font-family: sans-serif; margin: 20px; }
+  .card { border: 1px solid #ccc; padding: 10px; margin: 6px 0; }
+  a { color: #0645ad; }
+  p { min-height: 400px; }
+</style>
+</head>
+<body>
+  <!-- Detector-LOW link grid again; the page's purpose is the growth counter. -->
+  <div class="card"><a href="#">gcard one</a></div>
+  <div class="card"><a href="#">gcard two</a></div>
+  <div class="card"><a href="#">gcard three</a></div>
+  <div class="card"><a href="#">gcard four</a></div>
+  <div class="card"><a href="#">gcard five</a></div>
+  <div class="card"><a href="#">gcard six</a></div>
+  <div class="card"><a href="#">gcard seven</a></div>
+  <div class="card"><a href="#">gcard eight</a></div>
+  <p id="counter">ROUNDS:0</p>
+  <script>
+    // Every completed full-page traversal appends one growth round.
+    // primePage scrolls stepwise; a near-bottom pass fires the loader once.
+    window.__rounds = 0;
+    function grow() {
+      window.__rounds += 1;
+      document.getElementById('counter').textContent = 'ROUNDS:' + window.__rounds;
+      var p = document.createElement('p');
+      p.textContent = 'growth round ' + window.__rounds;
+      document.body.appendChild(p);
+    }
+    var lastBottom = -1, sameBottom = 0;
+    window.addEventListener('scroll', function () {
+      var bottom = window.scrollY + window.innerHeight;
+      var docBottom = document.documentElement.scrollHeight;
+      if (docBottom - bottom < 60) {
+        if (bottom === lastBottom) {
+          sameBottom += 1;
+          if (sameBottom === 3) { grow(); sameBottom = 0; }
+        } else {
+          lastBottom = bottom; sameBottom = 0;
+        }
+      }
+    });
+  </script>
+</body>
+</html>
