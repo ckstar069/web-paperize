@@ -10,7 +10,7 @@
 import { capturePage } from './capture.js';
 import { getDefaults, normalizeDefaults, setDefaults } from './settings.js';
 import { buildFilename } from './util.js';
-import { savePdf } from './download.js';
+import { reconcilePendingDownloads, savePdf, setDownloadTerminalHandler } from './download.js';
 
 const busyTabs = new Set();
 /** tabId -> chrome.debugger detach reason, for accurate error copy. */
@@ -39,6 +39,30 @@ function toPopup(payload) {
   chrome.runtime.sendMessage({ target: 'popup', ...payload }).catch(() => {});
 }
 
+setDownloadTerminalHandler(({ downloadId, state, error, entry }) => {
+  const result = {
+    downloadId,
+    filename: entry.filename,
+    size: entry.size,
+    ...(entry.metadata || {}),
+  };
+  if (state === 'complete') {
+    setBadge('OK', '#0d9488');
+    clearBadgeSoon();
+    toPopup({ action: 'done', result });
+  } else {
+    setBadge('ERR', '#dc2626');
+    clearBadgeSoon(4000);
+    const suffix = error ? ` (${error})` : '';
+    toPopup({ action: 'downloadFailed', message: `Download failed${suffix}.`, result });
+  }
+});
+
+// Handles downloads that reached a terminal state while the worker slept.
+void reconcilePendingDownloads().catch((error) => {
+  console.warn('[wpz] could not reconcile pending downloads:', error);
+});
+
 async function runCapture(tab, { scope = 'page', forceGeneric = false, layout = undefined, overrides = null } = {}) {
   if (!tab || !tab.id) throw new Error('No tab to export.');
   if (!capturable(tab.url)) {
@@ -60,13 +84,18 @@ async function runCapture(tab, { scope = 'page', forceGeneric = false, layout = 
       onProgress: (text, progress) => toPopup({ action: 'progress', text, progress }),
     });
     const filename = buildFilename(settings.filenameTemplate, metrics);
-    const saved = await savePdf(bytes, { filename });
-    setBadge('OK', '#0d9488');
-    clearBadgeSoon();
     const layoutInfo = metrics && metrics.actualLayout
       ? { requestedLayout: metrics.requestedLayout, actualLayout: metrics.actualLayout, autoFallback: Boolean(metrics.autoFallback) }
       : null;
-    toPopup({ action: 'done', result: { ...saved, title: metrics.title, url: metrics.url, layout: layoutInfo } });
+    const metadata = { title: metrics.title, url: metrics.url, layout: layoutInfo };
+    const saved = await savePdf(bytes, {
+      filename,
+      metadata,
+      onStarted: (started) => {
+        setBadge('DL');
+        toPopup({ action: 'downloadStarted', result: { ...started, ...metadata } });
+      },
+    });
     return { ...saved, title: metrics.title, url: metrics.url, layout: layoutInfo };
   } catch (error) {
     let message = error && error.message ? error.message : 'Export failed.';

@@ -171,6 +171,18 @@ chrome.runtime.onMessage.addListener((message) => {
     }
     showStatus(`Saved ${filename} (${Math.max(1, Math.round((size || 0) / 1024))} kB)${suffix}`, 'ok');
   }
+  if (message.action === 'downloadStarted') {
+    const { filename, layout } = message.result || {};
+    let suffix = '';
+    if (layout && layout.actualLayout) {
+      const actual = layout.actualLayout === 'adapter' ? 'Complete content' : layout.actualLayout === 'paperized' ? 'Paperized' : 'Original';
+      suffix = ` · ${actual}${layout.autoFallback ? ' (Auto fallback)' : ''}`;
+    }
+    showStatus(`Download started ${filename || ''}${suffix}`, 'pending');
+  }
+  if (message.action === 'downloadFailed') {
+    showStatus(message.message || 'Download failed.', 'error');
+  }
   if (message.action === 'error') {
     showStatus(message.message || 'Export failed.', 'error');
   }

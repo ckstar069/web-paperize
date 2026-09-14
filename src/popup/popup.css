@@ -112,6 +112,12 @@ button.secondary:not(:disabled):hover {
   color: #0f766e;
 }
 
+.status.pending {
+  color: #3730a3;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
 .status.error {
   color: #dc2626;
 }
