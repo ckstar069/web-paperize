@@ -131,3 +131,35 @@ web-paperize/
 
 - V0.2：snapshot 双引擎（借鉴 page2pdf `pdf-writer.js`）、元素/选区导出（picker + isolateElement 模式）、单张连续长页（测量法 + 200in 上限 + 二分兜底）、HUD 进度药丸、页眉页脚模板。
 - V0.3：网站 preset（settings 增加 `presets[host]`）、readability Article Mode（vendor + print 样式）、批量/后台标签页导出（需评估 tabs 权限代价）。
+
+---
+
+# 附录 A：双引擎架构（Case #2 G1 Landing，2026-09-14）
+
+V0.2.1 之后新增第二条渲染引擎。两条引擎共存，入口为 `capturePage(tabId, settings, { layout })`：
+
+## A.1 两条引擎
+
+**Original Web Layout**（默认，`layout` 未指定）
+- 保留原网页视觉布局，打印的就是屏幕上看到的排版。
+- 适合 repo/dashboard/首页/web app 等布局型页面。
+- 既有管线（prime → declutter → expand → print CSS → printToPDF）不变。
+
+**Paperized Layout**（`layout: 'paperized'`，G1/G1.1/G1.2 FINAL PASS）
+- 面向阅读型文章：正文提取 → 归一化 → 自有 Paper 文档 → 自有排版。
+- 管线：prime lazy → extract（Readability on clone + 结构交叉诊断）→ normalize（媒体 URL/净化/标题保真/尾部剪除）→ materialize（Shadow DOM owned document + Paper CSS）→ print state（源页面完全不可见）→ region 感知 A4 → Page.printToPDF → restore。
+- 模块：`paper-page.js`（页面侧函数，序列化注入，与 prepare.js 同契约）、`paper-css.js`（排版契约）、`paperize.js`（编排）、`vendor/readability/`（Apache-2.0）。
+
+## A.2 引擎不变量
+
+1. Paperized 永不打印 source DOM——打印画布上只有 owned Paper host 可见。
+2. source page 在 print state 完全隔离（结构性规则，非 class/id 猜测）。
+3. html/body 的 width+min-width 必须保持在打印视口内，否则触发引擎级 shrink-to-fit（见 A.3/F-7）。
+4. 原站 class/style 不得控制 Paper typography——Paper CSS 是唯一排版来源。
+5. title 不可靠时允许为空，不伪造（不拿正文首段冒充标题）。
+6. 尾部剪除必须高置信、保守：纯图尾段仅在出现文章结束标记（参考资料/references/结语等）后才剪；CTA 短文本块需命中通用关键词。
+7. Original 永远是安全 fallback。
+
+## A.3 引擎事实 F-7（Chromium printToPDF shrink-to-fit）
+
+当文档布局宽度超过纸宽/视口约束时，`Page.printToPDF` 会对**整页**施加一层额外缩放（无视 scale 参数）。实测：body `min-width:1160px` 的页面在 A4（794px 视口）下被缩至 0.68×，表现为字号与正文列同步异常变小（Case #2 G1 的 CSDN 8pt/318pt 现象）。防御：打印态清零 html/body 的 min-width/max-width，并保证文档宽 ≤ 纸宽。

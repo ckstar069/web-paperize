@@ -39,7 +39,7 @@ function toPopup(payload) {
   chrome.runtime.sendMessage({ target: 'popup', ...payload }).catch(() => {});
 }
 
-async function runCapture(tab, { scope = 'page', forceGeneric = false, overrides = null } = {}) {
+async function runCapture(tab, { scope = 'page', forceGeneric = false, layout = undefined, overrides = null } = {}) {
   if (!tab || !tab.id) throw new Error('No tab to export.');
   if (!capturable(tab.url)) {
     throw new Error('This page cannot be exported. Open a normal web page and try again.');
@@ -55,6 +55,7 @@ async function runCapture(tab, { scope = 'page', forceGeneric = false, overrides
     const { bytes, metrics } = await capturePage(tab.id, settings, {
       scope,
       forceGeneric,
+      layout,
       onProgress: (text, progress) => toPopup({ action: 'progress', text, progress }),
     });
     const filename = buildFilename(settings.filenameTemplate, metrics);
@@ -128,6 +129,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const result = await runCapture(tab, {
             scope: message.scope || 'page',
             forceGeneric: Boolean(message.forceGeneric),
+            layout: message.layout === 'paperized' ? 'paperized' : undefined,
             overrides: message.overrides || null,
           });
           sendResponse({ ok: true, result });
@@ -192,13 +194,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
-  if (command !== 'capture-page') return;
   try {
+    if (command !== 'capture-page') return;
     const tab = await activeTab();
     if (!tab) return;
     await runCapture(tab, { scope: 'page' });
   } catch {
-    /* surfaced through the badge already */
+    /* surfaced through the badge and the popup already */
   }
 });
 

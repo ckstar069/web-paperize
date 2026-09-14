@@ -13,6 +13,7 @@
 import * as cdp from './cdp.js';
 import * as prep from './prepare.js';
 import { getAdapter } from '../adapter/index.js';
+import { paperizeCapture } from './paperize.js';
 import {
   paperInches,
   marginInches,
@@ -99,6 +100,11 @@ async function inject(tabId, func, args = []) {
 export async function capturePage(tabId, settings, options = {}) {
   const onProgress = options.onProgress || (() => {});
   const scope = options.scope || 'page';
+  // Paperized layout (Case #2 G1): own engine, own page-side contract; the
+  // Original path below stays byte-identical for non-paperized exports.
+  if (options.layout === 'paperized') {
+    return paperizeCapture(tabId, settings, options);
+  }
   return cdp.withDebugger(tabId, async () => {
     const startUrl = await inject(tabId, () => location.href);
     // Everything below — including the zoom normalisation itself — lives

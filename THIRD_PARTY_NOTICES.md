@@ -52,12 +52,17 @@ Copyright (c) 2025 Ethan Jones · <https://github.com/ictrobot/chrome-debug-scre
 使用方式：仅知识采纳，无代码复制（最小 CDP 路径验证；单页模式二分搜索与
 break 重置 CSS 留作 V0.2 参考）。
 
-## mozilla/readability — Apache-2.0（计划 V0.3 vendor，尚未引入）
+## mozilla/readability — Apache-2.0（已 vendor）
 
 Mozilla 贡献者 · <https://github.com/mozilla/readability>
 
-计划以 vendor 方式引入 `Readability.js` 与 `Readability-readerable.js`。引入时随附
-其 LICENSE 与 NOTICE 于 `vendor/readability/`，并在此更新登记。
+`vendor/readability/Readability.js` 与 `vendor/readability/Readability-readerable.js`
+来自 npm 包 `@mozilla/readability@0.6.0`（与 2026-09-12 Case #2 research benchmark
+所测版本一致），原样复制，未修改。其 LICENSE 于 `vendor/readability/LICENSE.md`。
+
+使用方式：PoC G（Paperized Layout）在页面隔离世界以 classic script 注入两个文件，
+`isProbablyReaderable(clone)` 先行判读，`new Readability(clone).parse()` 运行于
+document clone 上，作为正文提取器（isProbablyReaderable 仅读不写，clone 保护页面）。
 
 ## 其他
 
