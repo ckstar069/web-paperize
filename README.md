@@ -28,7 +28,7 @@ V0.2.0 已实现并通过真机验证（2026-09-10，见 [docs/benchmark/2026-09
 
 - **整页导出**：工具栏图标 → Save as PDF
 - **元素导出**：图标 → Pick an element…（或右键）→ 悬停出现紫框（跟随鼠标），**↑/↓ 扩大/缩小选区**，点击导出所选区块
-- **选区导出**：选中文字 → 右键 → Save selection as PDF
+- **选区导出**：选中文字 → 右键 → Save selection as PDF（当前仅支持顶层页面选区；iframe 内选区会明确提示不支持）
 - **单张连续长页**：勾选 One continuous page（上限 200in，超限自动回退 A4 分页）
 - **ChatGPT 完整会话**：在会话页直接 Save as PDF——绕过虚拟化 DOM 从会话接口取全量内容（含引用编号与来源列表、图片内嵌、附件清单）；右键 "Save visible page as PDF (no adapter)" 可导出当前可见内容
 

@@ -26,10 +26,13 @@
 [download]
   ↓ offscreen document 铸 blob URL（失败兜底 data: URL）
   ↓ chrome.downloads.download({filename:'{title}.pdf'})
-  ↓ onChanged complete/interrupted → revoke blob URL
+  ↓ accepted → popup/badge: Download started
+  ↓ storage.session pending registry + 模块级 onChanged
+  ↓ complete/interrupted → revoke blob URL → 清 registry → Saved/Download failed
+  ↓ 所有 pending 清空后 best-effort 关闭 offscreen document
 ```
 
-进度反馈：popup（打开时）+ 扩展 badge（`… / OK / ERR`）。错误分类见 §6。
+进度反馈：popup（打开时）+ 扩展 badge（`… / DL / OK / ERR`）。错误分类见 §6。
 
 ## 2. 目录结构
 
@@ -66,11 +69,11 @@ web-paperize/
 - `window.__wpz__ = { undo: [], record, injected: [], pickedElement: null }`。
 - `record(el, prop, isAttr)`：记录 {el, prop, isAttr, prev, priority} —— 恢复的唯一事实源。
 - `primePage({scrollThrough})`：解锁 body 滚动锁（modal 打开时的 overflow:hidden）→ lazy→eager + data-* 回退 → 逐步滚动（90% 视口高步长，≤400 步，60ms/步，4 倍暴涨熔断）→ 回原位 → 等图（6s/图超时）→ `fonts.ready`（3s 竞速）→ 双 rAF。
-- `declutterPage()`：噪声词隐藏 → 覆盖 ≥80%×70% 或 dialog 隐藏 → 其余 fixed/sticky 改 static → 高 z-index backdrop 隐藏。
+- `declutterPage()`：噪声词隐藏 → 覆盖 ≥80%×70% 或 dialog 隐藏 → 其余 fixed→absolute、sticky→relative → 高 z-index backdrop 隐藏。
 - `expandContent()`：`<details>` 全开；纵向滚动容器展开（跳过 >20000px）；横向滚动容器（`overflow-x: auto|scroll`）一并展开，使宽表格把文档撑宽、由整页 fitWidth 缩小兜底（`<pre>` 例外：改走 pre-wrap 换行）。
 - `applyPrintCss(css)`：动画暂停 / `print-color-adjust: exact` / 隐藏滚动条 / `pre` 强制 `pre-wrap + overflow-wrap: anywhere`（纸张没有横向滚动，长代码行换行而非截断）+ 分页友好规则（break-inside avoid、thead 重复）。
 - `measurePage()`：宽高各三重测量取最大 + title/url/host/dpr。
-- `restorePage()`：移除注入节点与 style → 逆序 undo → 清掉因此变空的 `style` 属性 → 回滚滚动位置。
+- `restorePage()`：移除注入节点与 style → 释放 pickedElement/materializedHost 等 capture-owned DOM 强引用 → 逆序 undo → 清掉因此变空的 `style` 属性 → 回滚滚动位置。
 - 每个函数**幂等可重入**；`restorePage` 对元素已消失逐条容错。
 
 **恢复契约**：插件**主动施加**的 DOM/style/attribute/scroll/`<details>` 修改，必须全部经 undo log 恢复；预滚动触发的页面自身 JS 副作用（lazy 内容已加载、infinite scroll DOM 增长等）不承诺回滚。所有属性变更一律走 `record()`（含 `img.decoding`——page2pdf 存在未记录该属性导致恢复缺失的缺陷，不继承）。
@@ -83,12 +86,13 @@ web-paperize/
 - 捕获开始时记录 `location.href`；teardown 前校验未变（防导航后恢复悬空）。
 
 ### 3.4 settings.js
-- `storage.local` 键：`defaults`（单对象；不用 `storage.sync`，避免设置随 Chrome Sync 离开本机）。V0.1 字段：`paper('a4'|'letter'), orientation('auto'|'portrait'|'landscape'), margin('none'|'slim'|'normal'|'wide'), fitWidth(true), printBackground(true), avoidBreaks(true), declutter(true), expandScrollers(true), filenameTemplate('{title}')`。
-- 内存缓存 + `storage.onChanged` 失效。preset（按 host）留 V0.3，schema 预留。
+- `storage.local` 键：`defaults`（单对象；不用 `storage.sync`，避免设置随 Chrome Sync 离开本机）。运行字段：`paper('a4'|'letter'), layoutMode('auto'|'paperized'|'original'), orientation('auto'|'portrait'|'landscape'), margin('none'|'slim'|'normal'|'wide'), fitWidth, printBackground, avoidBreaks, declutter, expandScrollers, singlePage, filenameTemplate`，以及有界的内部 timing/debug 字段。
+- 所有 read/onChanged/setDefaults/runtime override 共用 `normalizeDefaults()`；非法 enum/type 回默认、未知旧字段不进入 runtime。`setDefaults` 仅在 storage 写成功后更新内存 cache，popup 写失败时恢复持久值并显示错误。preset 不在当前范围。
 
 ### 3.5 download.js + offscreen
 - `buildFilename(template, metrics)`：宏 `{title}/{host}/{domain}/{date}/{time}/{path}` + 非法字符清洗 + 120 字符截断。
-- `savePdf(bytes, {filename, saveAs})`：offscreen（`reasons:['BLOBS']`，单例防并发）→ blob URL → `chrome.downloads.download` → onChanged 后 revoke；offscreen 失败兜底 data: URL。
+- `savePdf(bytes, {filename, saveAs, metadata, onStarted})`：offscreen（`reasons:['BLOBS']`，单例防并发）→ blob URL（失败兜底 data: URL）→ `chrome.downloads.download` accepted 后报告 Download started；pending downloadId/blobUrl/metadata 写入 `storage.session`。
+- `downloads.onChanged` 在模块顶层稳定注册；complete/interrupted 幂等 revoke、删除 registry、报告 Saved/Download failed。Worker 重启会重新读取 registry 并 reconcile 已终态任务；无 pending 时 best-effort 关闭 offscreen。
 
 ### 3.6 service-worker.js
 - `busyTabs: Set<number>`；同 tab 重复触发 → 明确报错。
@@ -100,7 +104,7 @@ web-paperize/
 
 ### 3.7 popup
 - 打开即 `getState`；受限页面禁用 Save 并说明原因（debugger 为安装时声明的 required 权限，无运行时请求流程）。
-- 捕获期间监听 progress 更新进度条；完成显示文件名与大小；错误显示分类文案。
+- 捕获期间监听 progress；Chrome 接受下载后显示 Download started，只有 downloads terminal=complete 才显示 Saved，interrupted 显示 Download failed。
 - 受限页面（chrome:// 等）禁用 Save 并说明原因。
 
 ## 4. 权限与隐私
@@ -112,7 +116,7 @@ web-paperize/
 - **无 host_permissions、无 optional_permissions**：捕获由 popup 点击发起，activeTab 授权当前 tab 足够（比 page2pdf 的 `<all_urls>` 更克制）。
 - `debugger` 为 manifest **required** 权限：Chrome 当前官方规范不允许其出现在 `optional_permissions`（pdfsnap 的 optional 方案属参考项目实现、与规范冲突，不采纳）。因此安装时即声明；运行时没有 permissions.request / debuggerGranted / revoke 流程，popup 不做相关状态。
 - 捕获期间 Chrome 顶部出现"正在调试"提示条属平台行为，无法去除；代码必须保证最短 attach 时间并在一切异常路径 detach。
-- 纯本地：无网络请求、无遥测、不上传任何页面内容。
+- 无遥测，不向 web-paperize 自有服务或无关第三方上传页面内容。Generic export 不发网络请求；dedicated ChatGPT adapter 会使用当前页面登录态向 ChatGPT/OpenAI 同源 backend 获取用户正在导出的会话内容。
 
 ## 5. 错误处理原则（审计归纳）
 
@@ -168,10 +172,10 @@ V0.2.1 之后新增第二条渲染引擎。两条引擎共存，入口为 `captu
 
 # 附录 B：Auto Paperize Detector（Case #2 G2/G2.1 Landing，2026-09-14）
 
-G2 detector 层已落地为**内部能力**（`src/background/paper-detect.js`），尚未接入 Auto runtime / UI：
+G2 detector 已落地于 `src/background/paper-detect.js`，并由附录 C 所述 Auto runtime / UI 正式使用：
 
 ```
-Auto candidate（未来）
+Whole Page / Auto
     ↓
 detectPaperizable(signals)
     ├─ 8 项门全过 → paperized / high
@@ -233,7 +237,7 @@ Whole Page:
 
 ## 结果可见性
 
-每次导出 metrics 携带 requestedLayout / actualLayout / autoDecision / autoFallback；popup 状态行显示 `Saved xxx.pdf · Paperized / Original / Original (Auto fallback)`。日常使用即 G2 的真实 Golden Set。
+每次导出 metrics 携带 requestedLayout / actualLayout / autoDecision / autoFallback；popup 先显示 `Download started`，仅在 Chrome 报告 terminal=complete 后显示 `Saved xxx.pdf · Paperized / Original / Original (Auto fallback)`。日常使用即 G2 的真实 Golden Set。
 
 ## Paperized 纸张契约（正式）
 

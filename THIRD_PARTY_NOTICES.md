@@ -64,6 +64,63 @@ Mozilla 贡献者 · <https://github.com/mozilla/readability>
 `isProbablyReaderable(clone)` 先行判读，`new Readability(clone).parse()` 运行于
 document clone 上，作为正文提取器（isProbablyReaderable 仅读不写，clone 保护页面）。
 
+## Cocoanetics/ChatGPTExporter — MIT
+
+Copyright (c) 2026 Cocoanetics · <https://github.com/Cocoanetics/ChatGPTExporter>
+
+使用方式：ChatGPT dedicated adapter 的同源 conversation endpoint 获取、active branch
+重建、引用/附件信息转换采用其公开实现作为算法级参考；本项目实现为重写，没有复制其
+源码文件。按 `docs/V0.2_PLAN.md` 的 provenance 决定保留其 MIT notice：
+
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
+
+## pionxzh/chatgpt-exporter — MIT
+
+Copyright (c) 2022-Present Pionxzh · <https://github.com/pionxzh/chatgpt-exporter>
+
+使用方式：ChatGPT conversation tree/materialization、引用转换和内容占位符处理采用其
+公开实现作为算法级参考；本项目实现为重写，没有复制其源码文件。按 V0.2 provenance
+决定保留其 MIT notice：
+
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
+
+## maks-bond/chatgpt-conversation-exporter — idea reference only
+
+<https://github.com/maks-bond/chatgpt-conversation-exporter> 在调查时没有 LICENSE。本项目只把
+其 metadata-first/DOM-fallback 路线作为思想对照，未复制或引入其代码。
+
 ## 其他
 
 - SingleFile（AGPL）：仅阅读架构思路，**不引入任何代码**。

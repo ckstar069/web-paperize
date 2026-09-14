@@ -219,7 +219,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId === 'wpz-page-generic') {
       return void runCapture(tab, { scope: 'page', forceGeneric: true });
     }
-    if (info.menuItemId === 'wpz-selection') return void runCapture(tab, { scope: 'selection' });
+    if (info.menuItemId === 'wpz-selection') {
+      if (typeof info.frameId === 'number' && info.frameId !== 0) {
+        const message = 'Selection inside frames is not supported yet.';
+        setBadge('ERR', '#dc2626');
+        clearBadgeSoon(4000);
+        toPopup({ action: 'error', message });
+        return;
+      }
+      return void runCapture(tab, { scope: 'selection' });
+    }
     await runCapture(tab, { scope: 'page' });
   } catch {
     /* surfaced through the badge and the popup already */
