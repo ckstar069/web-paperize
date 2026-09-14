@@ -51,13 +51,15 @@ export function extractPaperArticle() {
       best = el;
     }
   }
+  const scorerRootText = best ? (best.innerText || '').replace(/\s+/g, ' ').trim() : '';
   diagnostics.scorer = best
     ? {
         tag: best.tagName.toLowerCase(),
         id: best.id || null,
         class: (typeof best.className === 'string' ? best.className : '').split(/\s+/).slice(0, 3).join(' '),
         score: Math.round(bestScore * 100) / 100,
-        textLength: (best.innerText || '').length,
+        textLength: scorerRootText.length,
+        rootText: scorerRootText.slice(0, 30000),
       }
     : null;
   diagnostics.semantic = {
@@ -390,6 +392,66 @@ export function extractPaperArticle() {
     prunedCount: pruning.filter((p) => p.action === 'prune').length,
     decisions: pruning,
   };
+  // G2 detection interface: content-level stats AFTER sanitize/prune — the
+  // paper document's own prose/link shape, immune to site chrome. Read-only.
+  const contentStats = (() => {
+    let textLen = 0;
+    let linkLen = 0;
+    let paraBlocks = 0;
+    for (const el of parsed.body.querySelectorAll('a')) linkLen += (el.textContent || '').trim().length;
+    // Any element whose DIRECT text is prose-length counts as a block:
+    // sanitized content often carries prose in spans (WeChat/X shapes).
+    for (const el of parsed.body.querySelectorAll('p, div, span, li, blockquote')) {
+      const own = Array.from(el.childNodes)
+        .filter((n) => n.nodeType === 3)
+        .map((n) => n.nodeValue || '')
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (own.length >= 40) paraBlocks += 1;
+    }
+    textLen = (parsed.body.textContent || '').replace(/\s+/g, ' ').trim().length;
+    return {
+      textLength: textLen,
+      linkDensity: textLen ? Math.round((linkLen / textLen) * 100) / 100 : 1,
+      paragraphCount: paraBlocks,
+    };
+  })();
+
+  // G2.1 subject-text-overlap: size agreement alone cannot prove the two
+  // extractors found the SAME subject. Pull three prose anchors from the
+  // sanitized content (head/middle/tail, 60-120 chars, links/headings
+  // excluded) and containment-check them in the scorer root's text.
+  const subjectOverlap = (() => {
+    const root = diagnostics.scorer ? diagnostics.scorer.rootText || '' : '';
+    if (!root) return { anchors: [], hits: 0 };
+    const squeeze = (t) => t.replace(/\s+/g, '');
+    const squeezedRoot = squeeze(root);
+    // Leaf-ish prose blocks only (no nested p/div/li): textContent INCLUDES
+    // inline children (<code>, <sup> citations) — direct-text-node joins
+    // drop them and the anchor then never appears verbatim in the root text.
+    const blocks = [];
+    for (const el of parsed.body.querySelectorAll('p, span, li, blockquote')) {
+      if (el.querySelector('p, div, li, blockquote')) continue;
+      const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t.length >= 60 && t.length <= 400 && squeeze(t).length >= 40) blocks.push(t);
+    }
+    if (!blocks.length) return { anchors: [], hits: 0 };
+    const pickAt = (frac) => blocks[Math.min(blocks.length - 1, Math.floor(blocks.length * frac))];
+    const anchors = [pickAt(1 / 6), pickAt(0.5), pickAt(5 / 6)]
+      .filter((a, i, arr) => arr.indexOf(a) === i);
+    let hits = 0;
+    const checked = anchors.map((a) => {
+      // whitespace-insensitive containment: innerText and serialized content
+      // disagree on spacing even when the text is identical.
+      const needle = squeeze(a.slice(0, 120));
+      const hit = needle.length >= 40 && squeezedRoot.indexOf(needle) !== -1;
+      if (hit) hits += 1;
+      return { sample: a.slice(0, 60), hit };
+    });
+    return { anchors: checked, hits };
+  })();
+
   const prunedContentHtml = parsed.body.innerHTML;
 
   return {
@@ -408,6 +470,8 @@ export function extractPaperArticle() {
       sanitizeAudit: { rawAttributes: auditRaw, residueAfterSanitize: residue },
       titleResolution,
       tailPruning,
+      contentStats,
+      subjectOverlap,
     }),
   };
 }

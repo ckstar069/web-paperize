@@ -163,3 +163,49 @@ V0.2.1 之后新增第二条渲染引擎。两条引擎共存，入口为 `captu
 ## A.3 引擎事实 F-7（Chromium printToPDF shrink-to-fit）
 
 当文档布局宽度超过纸宽/视口约束时，`Page.printToPDF` 会对**整页**施加一层额外缩放（无视 scale 参数）。实测：body `min-width:1160px` 的页面在 A4（794px 视口）下被缩至 0.68×，表现为字号与正文列同步异常变小（Case #2 G1 的 CSDN 8pt/318pt 现象）。防御：打印态清零 html/body 的 min-width/max-width，并保证文档宽 ≤ 纸宽。
+
+---
+
+# 附录 B：Auto Paperize Detector（Case #2 G2/G2.1 Landing，2026-09-14）
+
+G2 detector 层已落地为**内部能力**（`src/background/paper-detect.js`），尚未接入 Auto runtime / UI：
+
+```
+Auto candidate（未来）
+    ↓
+detectPaperizable(signals)
+    ├─ 8 项门全过 → paperized / high
+    └─ 任一项失败 → original / low   ← Auto 的安全默认
+```
+
+**核心哲学：False Paperize 优先级高于 Missed Paperize。** 宁可保守回 Original，不错误重构 dashboard/feed/产品页。
+
+## 八项门控（全 AND；isProbablyReaderable 仅 supporting note，不作硬门——微信假阴性实证）
+
+1. readability-parse；2. text-substantial（≥700 字符）；3. subject-size-agreement（scorer/readability 体量比 ≤3×）；4. subject-text-overlap（前/中/尾 3 个叶级 prose 锚点 ≥1 个出现在 structural root 文本中，空白不敏感包含）；5. content-prose（提取内容 prose 块 ≥4）；6. content-link-density（提取内容链接密度 ≤0.34）；7. not-a-link-shell（文档链接密度 ≤0.9）；8. subject-landmark-or-coverage（语义地标 或 提取覆盖 ≥15%）。
+
+阈值集中在 `THRESHOLDS` 常量（含数据出处注释）。主信号取**提取内容级**而非文档级（文档级被站点外壳污染：实测 CSDN/MDN/Wiki 文档链接密度 0.5-0.7 而正文 0.05-0.3）。
+
+## Benchmark 汇总（24 页 Golden Set，2026-09-14，快照存于 owner 本地研究档案，不入库）
+
+| 类别 | 结果 |
+|---|---|
+| positive（明确应 Paperize） | 10/11 |
+| negative（明确应 Original） | 7/7（False Paperize = 0） |
+| ambiguous（Auto 应回 Original） | 4/6 |
+| strict overall | 21/24 |
+
+关键边界案例：
+- **173 字维基 stub → 保守 Original**（text ≥700 的保守代价，非失败）；
+- **README-heavy GitHub repo ×2 → 通过全部八门**：README 主导页面文本，是 documented product ambiguity 而非 detector bug——"强阅读主体优先 vs 应用页面优先 Original"属 Auto 产品策略决策，禁止用 hostname/repo 特判解决；
+- **Apple 产品页（其余门全过）被 subject-text-overlap=0 单独拦下**——主体一致检查的必要性实证。
+
+## 检测接口（只读）
+
+extractPaperArticle 的 diagnostics 新增 `contentStats`（提取内容 text/linkDensity/proseBlocks）、`subjectOverlap`（锚点+命中）、`scorer.rootText`——全部在 sanitize/prune 之后计算，只增加观测信息，不改变 Paper model 输出（确定性回归见 paper-detect.test.mjs）。
+
+## TODO（G1 遗留，非阻塞）
+
+- 老 V0.3 roadmap 段落已过时（Paperized+Readability 已落地）。
+- Paperized 纸张契约：正式暴露时建议 A4/Letter、不支持 Fit/Continuous。
+- paperize extract 的 console.log 产品化后收敛为 debug 开关。
