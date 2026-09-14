@@ -385,7 +385,8 @@ export async function capturePage(tabId, settings, options = {}) {
         oneSheet = false;
         plan = buildPlan(false);
         if (adapterScope) await setPrintMode('paged');
-        // Pagination-friendly CSS replaces the single-sheet set before reprint.        await inject(tabId, prep.applyPrintCss, [printCssFor(false)]);
+        // Pagination-friendly CSS replaces the single-sheet set before reprint.
+        await inject(tabId, prep.applyPrintCss, [printCssFor(false)]);
       };
 
       onProgress(oneSheet ? 'Rendering one continuous page' : 'Rendering PDF');

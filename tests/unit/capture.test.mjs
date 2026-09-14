@@ -36,3 +36,19 @@ test('responsive hide workaround is isolated-scope only, exact class tokens', ()
   assert.doesNotMatch(ISOLATED_SCOPE_CSS, /\[/); // no attribute-substring selectors
   assert.doesNotMatch(NO_BREAK_CSS, /hide-sm|hide-md/);
 });
+
+// F-3 regression (Case #2 G1 finding): the paginateInstead fallback had its
+// applyPrintCss call swallowed by a same-line // comment, so a single→paged
+// reprint kept NO_BREAK CSS. Static guard: the call must be a live statement.
+test('paginateInstead re-applies print CSS as a real statement (F-3)', async () => {
+  const source = await import('node:fs').then((fs) => fs.readFileSync(new URL('../../src/background/capture.js', import.meta.url), 'utf8'));
+  const fn = source.slice(source.indexOf('const paginateInstead'), source.indexOf('onProgress(oneSheet'));
+  const liveLines = fn.split('\n').filter((l) => !l.trim().startsWith('//'));
+  const joined = liveLines.join('\n');
+  assert.ok(
+    /await\s+inject\(tabId,\s*prep\.applyPrintCss,/.test(joined),
+    'paginateInstead must await applyPrintCss outside comments'
+  );
+  // And the whole file must not contain the swallowed pattern again.
+  assert.ok(!/\/\/[^\n]*await\s+inject/.test(source), 'no await may hide behind a // comment');
+});
