@@ -168,6 +168,7 @@ export async function materializeConversation(model) {
     display: 'block', width: '800px', 'max-width': '100%',
     'margin-top': '0', 'margin-right': 'auto', 'margin-bottom': '0', 'margin-left': 'auto',
     position: 'static', float: 'none', transform: 'none', scale: 'none', zoom: '1',
+    translate: 'none', rotate: 'none', visibility: 'visible', opacity: '1', filter: 'none',
     'box-sizing': 'border-box',
   };
   for (const [property, value] of Object.entries(ownedGeometry)) {

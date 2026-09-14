@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WPZ long lifecycle repeat fixture</title>
+  <style>
+    body { margin: 0; font: 17px/1.65 system-ui, sans-serif; color: #172033; }
+    main { max-width: 780px; margin: 0 auto; padding: 40px 32px 100px; }
+    #lifecycle-status {
+      position: fixed; z-index: 99999; right: 12px; top: 12px;
+      padding: 8px 10px; background: #fff; border: 2px solid #173f73;
+      font: 13px/1.3 ui-monospace, monospace;
+    }
+  </style>
+</head>
+<body>
+  <aside id="lifecycle-status">CURRENT_HOSTS:0 ADDED:0 REMOVED:0</aside>
+  <main>
+    <article id="article">
+      <h1>Long lifecycle repeat fixture</h1>
+      <p><strong>WPZ-LONG-LIFECYCLE-MARKER</strong></p>
+    </article>
+  </main>
+  <script>
+    const article = document.getElementById('article');
+    for (let i = 1; i <= 120; i += 1) {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = `Lifecycle paragraph ${i}. This deterministic prose makes the paper document long enough for repeated multi-page capture while preserving a stable identity marker and readable tail. ` +
+        'Owned capture hosts must be removed completely after every export, and the original page must remain usable for the next run.';
+      article.appendChild(paragraph);
+    }
+    const status = document.getElementById('lifecycle-status');
+    let added = 0;
+    let removed = 0;
+    const isOwned = (node) => node && node.nodeType === 1 &&
+      (node.matches('[data-wpz-paper-document], [data-wpz-materialized]') ||
+       node.querySelector('[data-wpz-paper-document], [data-wpz-materialized]'));
+    const countOwned = () => document.querySelectorAll(
+      '[data-wpz-paper-document], [data-wpz-materialized]'
+    ).length;
+    const render = () => {
+      status.textContent = `CURRENT_HOSTS:${countOwned()} ADDED:${added} REMOVED:${removed}`;
+    };
+    new MutationObserver((records) => {
+      let changed = false;
+      for (const record of records) {
+        for (const node of record.addedNodes) if (isOwned(node)) { added += 1; changed = true; }
+        for (const node of record.removedNodes) if (isOwned(node)) { removed += 1; changed = true; }
+      }
+      if (changed) render();
+    }).observe(document.body, { childList: true });
+    render();
+  </script>
+</body>
+</html>

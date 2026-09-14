@@ -234,11 +234,43 @@ test('Paperized light-DOM host geometry is protected with inline important decla
   const host = win.__wpz__.pickedElement;
   const expected = {
     display: 'block', width: '800px', 'max-width': '100%', 'margin-left': 'auto',
-    transform: 'none', position: 'static', float: 'none', 'box-sizing': 'border-box', zoom: '1',
+    transform: 'none', translate: 'none', rotate: 'none', position: 'static',
+    float: 'none', visibility: 'visible', opacity: '1', filter: 'none',
+    'box-sizing': 'border-box', zoom: '1',
   };
   for (const [property, value] of Object.entries(expected)) {
     assert.equal(host.style.getPropertyValue(property), value, property);
     assert.equal(host.style.getPropertyPriority(property), 'important', `${property} priority`);
+  }
+  runInWindow(win, prep.restorePage);
+});
+
+test('Paperized isolation owns root geometry against hostile ancestor transforms', async () => {
+  const { win } = makeWindow(`<!DOCTYPE html><html><head><title>T</title><style>
+    * { width:123px !important; max-width:123px !important; margin-left:300px !important;
+        transform:scale(.2) !important; position:fixed !important; display:none !important;
+        float:right !important; opacity:.01 !important; filter:blur(20px) !important; }
+  </style></head><body></body></html>`);
+  runInWindow(win, prep.beginCaptureState);
+  const built = await runInWindow(win, paperPage.buildPaperDocument, {
+    title: 'Host geometry', byline: '', publishedTime: '', siteName: 'test',
+    sourceUrl: 'https://example.local/x', contentHtml: '<p>content</p>', textLength: 7,
+  }, PAPER_CSS);
+  assert.ok(built.ok);
+  assert.ok(runInWindow(win, paperPage.isolatePaperHost));
+
+  const expected = {
+    display: 'block', visibility: 'visible', opacity: '1', position: 'static',
+    float: 'none', transform: 'none', translate: 'none', rotate: 'none',
+    scale: 'none', zoom: '1', filter: 'none', 'box-sizing': 'border-box',
+    width: 'auto', height: 'auto', 'min-width': '0px',
+    'max-width': 'none',
+  };
+  for (const root of [win.document.documentElement, win.document.body]) {
+    for (const [property, value] of Object.entries(expected)) {
+      assert.equal(root.style.getPropertyValue(property), value, property);
+      assert.equal(root.style.getPropertyPriority(property), 'important', `${property} priority`);
+    }
   }
   runInWindow(win, prep.restorePage);
 });

@@ -503,6 +503,7 @@ export function buildPaperDocument(model, css) {
     display: 'block', width: '800px', 'max-width': '100%',
     'margin-top': '0', 'margin-right': 'auto', 'margin-bottom': '0', 'margin-left': 'auto',
     position: 'static', float: 'none', transform: 'none', scale: 'none', zoom: '1',
+    translate: 'none', rotate: 'none', visibility: 'visible', opacity: '1', filter: 'none',
     'box-sizing': 'border-box', 'font-size': '17px', 'line-height': '1.65',
     contain: 'layout style',
   };
@@ -603,6 +604,18 @@ export function isolatePaperHost() {
   }
   for (const el of [document.documentElement, document.body]) {
     if (!el) continue;
+    // The host's inline declarations cannot neutralize transforms or layout
+    // constraints applied to its ancestors. Own the root geometry as well so
+    // hostile universal rules (for example `* { transform:scale(.2)
+    // !important; position:fixed !important }`) cannot shrink the complete
+    // paper tree to an effectively blank PDF.
+    const rootGeometry = {
+      display: 'block', visibility: 'visible', opacity: '1', position: 'static',
+      float: 'none', transform: 'none', translate: 'none', rotate: 'none',
+      scale: 'none', zoom: '1', filter: 'none', 'box-sizing': 'border-box',
+      width: 'auto', height: 'auto',
+    };
+    for (const [property, value] of Object.entries(rootGeometry)) set(el, property, value);
     for (const p of [
       'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
       'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
