@@ -11,7 +11,7 @@ export const MESSAGES = {
     'popup.layout': 'Layout',
     'popup.orientation': 'Orientation',
     'popup.margin': 'Margin',
-    'popup.language': 'Language',
+    'popup.language': 'Interface language',
     'popup.singlePage': 'One continuous page',
     'popup.save': 'Save as PDF',
     'popup.pick': 'Pick an element…',
@@ -33,6 +33,7 @@ export const MESSAGES = {
     'hint.paperized': 'Paperized: reformats the main reading content for paper. Paperized output is portrait and paginated.',
     'hint.original': 'Original: preserves the webpage layout.',
     'hint.auto': 'Auto: uses Paperized for reliable reading content; otherwise preserves the page.',
+    'hint.interfaceLanguage': 'Changes the Web Paperize interface only; webpage and PDF content are unchanged.',
 
     'progress.starting': 'Starting…',
     'progress.exporting': 'Exporting…',
@@ -113,7 +114,7 @@ export const MESSAGES = {
     'popup.layout': '布局',
     'popup.orientation': '方向',
     'popup.margin': '页边距',
-    'popup.language': '语言',
+    'popup.language': '界面语言',
     'popup.singlePage': '单张连续页面',
     'popup.save': '保存为 PDF',
     'popup.pick': '选择网页元素…',
@@ -135,6 +136,7 @@ export const MESSAGES = {
     'hint.paperized': '纸张化：提取主要阅读内容并重新排版为适合纸张的格式。纸张化输出固定为纵向分页。',
     'hint.original': '原网页：保留网页当前布局。',
     'hint.auto': '自动：检测到可靠阅读内容时使用纸张化，否则保留原网页布局。',
+    'hint.interfaceLanguage': '仅更改 Web Paperize 界面语言，不影响网页或 PDF 内容。',
 
     'progress.starting': '正在开始…',
     'progress.exporting': '正在导出…',

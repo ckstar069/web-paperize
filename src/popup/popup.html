@@ -39,14 +39,6 @@
         <option value="wide" data-i18n="option.wide">Wide</option>
       </select>
     </label>
-    <label class="row"><span data-i18n="popup.language">Language</span>
-      <select id="uiLanguage">
-        <option value="auto" data-i18n="option.languageAuto">Auto</option>
-        <option value="zh-CN" data-i18n="option.languageZhCN">简体中文</option>
-        <option value="en" data-i18n="option.languageEn">English</option>
-      </select>
-    </label>
-
     <label class="row check">
       <input type="checkbox" id="singlePage">
       <span data-i18n="popup.singlePage">One continuous page</span>
@@ -60,6 +52,17 @@
 
     <button id="save" class="primary" data-i18n="popup.save">Save as PDF</button>
     <button id="pick" class="secondary" data-i18n="popup.pick">Pick an element…</button>
+
+    <section class="preferences" id="uiPreferences">
+      <label class="row"><span data-i18n="popup.language">Interface language</span>
+        <select id="uiLanguage">
+          <option value="auto" data-i18n="option.languageAuto">Auto</option>
+          <option value="zh-CN" data-i18n="option.languageZhCN">简体中文</option>
+          <option value="en" data-i18n="option.languageEn">English</option>
+        </select>
+      </label>
+      <div class="preference-hint" data-i18n="hint.interfaceLanguage">Changes the Web Paperize interface only; webpage and PDF content are unchanged.</div>
+    </section>
   </main>
   <footer data-i18n="popup.footer">No web-paperize server, no telemetry. Nothing is sent to unrelated third parties.</footer>
   <script type="module" src="popup.js"></script>

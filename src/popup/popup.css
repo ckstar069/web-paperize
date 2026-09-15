@@ -81,6 +81,22 @@ button.secondary:not(:disabled):hover {
   background: rgba(128, 128, 128, 0.12);
 }
 
+.preferences {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.preferences .row {
+  margin-bottom: 5px;
+}
+
+.preference-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #64748b;
+}
+
 .progress {
   margin-top: 12px;
 }
@@ -123,7 +139,7 @@ button.secondary:not(:disabled):hover {
 }
 
 footer {
-  margin-top: 12px;
+  margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid rgba(128, 128, 128, 0.25);
   font-size: 11px;

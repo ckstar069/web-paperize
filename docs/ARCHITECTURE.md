@@ -53,7 +53,7 @@ web-paperize/
 │   │   ├── i18n.js             # 语言归一化、Auto 解析、t()/错误翻译
 │   │   └── context-menus.js    # 纯函数菜单定义
 │   ├── popup/
-│   │   ├── popup.html/js/css   # Paper/Layout/Margin/Language + 操作与进度 UI
+│   │   ├── popup.html/js/css   # 导出参数/操作/进度 + 独立的界面语言偏好区
 │   │   └── localize.js         # 当前 popup DOM 即时切换语言
 │   └── offscreen/
 │       ├── offscreen.html/js   # makeBlobUrl / revokeBlobUrl
@@ -112,7 +112,7 @@ web-paperize/
 
 ### 3.7 popup
 - 打开即 `getState`；受限页面禁用 Save 并说明原因（debugger 为安装时声明的 required 权限，无运行时请求流程）。
-- Language 选择写入 `storage.local`；同一 popup 内立即刷新，不需要关闭重开。Auto / 简体中文 / English 只影响扩展自己的 UI，不改网页内容、PDF 正文、标题或文件名。
+- “界面语言 / Interface language”位于两个导出按钮之后、隐私 footer 之前的独立偏好区，避免与 Paper/Layout/Orientation/Margin 导出参数混淆；选择写入 `storage.local`，同一 popup 内立即刷新，不需要关闭重开。Auto / 简体中文 / English 只影响扩展自己的 UI，不改网页内容、PDF 正文、标题或文件名。
 - 捕获期间监听 progress；Chrome 接受下载后显示 Download started，只有 downloads terminal=complete 才显示 Saved，interrupted 显示 Download failed。
 - 受限页面（chrome:// 等）禁用 Save 并说明原因。
 

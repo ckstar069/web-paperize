@@ -106,6 +106,11 @@ test('the same open popup DOM switches Chinese and English immediately', () => {
   localizePopup(document, 'zh-CN');
   assert.strictEqual(document.documentElement, rootBefore);
   assert.equal(document.querySelector('h1').textContent, '导出 PDF');
+  assert.equal(document.querySelector('#uiPreferences [data-i18n="popup.language"]').textContent, '界面语言');
+  assert.equal(
+    document.querySelector('#uiPreferences [data-i18n="hint.interfaceLanguage"]').textContent,
+    '仅更改 Web Paperize 界面语言，不影响网页或 PDF 内容。'
+  );
   assert.equal(document.querySelector('#layoutMode option[value="auto"]').textContent, '自动');
   assert.equal(document.querySelector('#uiLanguage option[value="zh-CN"]').textContent, '简体中文');
   assert.equal(document.querySelector('#uiLanguage option[value="en"]').textContent, 'English');
@@ -114,8 +119,25 @@ test('the same open popup DOM switches Chinese and English immediately', () => {
   localizePopup(document, 'en');
   assert.strictEqual(document.documentElement, rootBefore);
   assert.equal(document.querySelector('h1').textContent, 'Export PDF');
+  assert.equal(document.querySelector('#uiPreferences [data-i18n="popup.language"]').textContent, 'Interface language');
+  assert.equal(
+    document.querySelector('#uiPreferences [data-i18n="hint.interfaceLanguage"]').textContent,
+    'Changes the Web Paperize interface only; webpage and PDF content are unchanged.'
+  );
   assert.equal(document.querySelector('#layoutMode option[value="auto"]').textContent, 'Auto');
   assert.equal(document.documentElement.lang, 'en');
+});
+
+test('interface language is a separate preference after export actions and before privacy copy', () => {
+  const html = readFileSync(new URL('../../src/popup/popup.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../../src/popup/popup.css', import.meta.url), 'utf8');
+  const dom = new JSDOM(html);
+  const { document } = dom.window;
+  const ordered = [...document.body.querySelectorAll('#save, #pick, #uiPreferences, footer')]
+    .map((element) => element.id || element.tagName.toLowerCase());
+  assert.deepEqual(ordered, ['save', 'pick', 'uiPreferences', 'footer']);
+  assert.equal(document.querySelector('#uiPreferences').parentElement.tagName, 'MAIN');
+  assert.match(css, /\.preferences\s*\{[^}]*border-top:/s);
 });
 
 test('context menus rebuild with translated titles after a language switch', async () => {
