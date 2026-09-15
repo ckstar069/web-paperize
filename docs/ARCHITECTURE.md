@@ -42,13 +42,19 @@ web-paperize/
 ├── src/
 │   ├── background/
 │   │   ├── service-worker.js   # 入口：消息路由、busyTabs、权限请求、进度/错误分发
+│   │   ├── context-menus.js    # 按当前 uiLanguage 重建右键菜单
 │   │   ├── cdp.js              # chrome.debugger 封装（引用计数/withDebugger/CdpError/readStream）
 │   │   ├── capture.js          # capturePage(tabId, settings)：编排 prepare→print→teardown
 │   │   ├── prepare.js          # 注入页面的函数库（每个函数自包含，可被 executeScript 序列化）
 │   │   ├── settings.js         # storage.local：defaults + 读取/缓存
 │   │   └── download.js         # offscreen blob URL、文件名模板、保存
+│   ├── i18n/
+│   │   ├── messages.js         # en / zh-CN 统一用户文案目录
+│   │   ├── i18n.js             # 语言归一化、Auto 解析、t()/错误翻译
+│   │   └── context-menus.js    # 纯函数菜单定义
 │   ├── popup/
-│   │   ├── popup.html/js/css   # V0.1 唯一 UI：Paper/Layout/Margin + Save 按钮 + 进度
+│   │   ├── popup.html/js/css   # Paper/Layout/Margin/Language + 操作与进度 UI
+│   │   └── localize.js         # 当前 popup DOM 即时切换语言
 │   └── offscreen/
 │       ├── offscreen.html/js   # makeBlobUrl / revokeBlobUrl
 ├── docs/
@@ -86,7 +92,7 @@ web-paperize/
 - 捕获开始时记录 `location.href`；teardown 前校验未变（防导航后恢复悬空）。
 
 ### 3.4 settings.js
-- `storage.local` 键：`defaults`（单对象；不用 `storage.sync`，避免设置随 Chrome Sync 离开本机）。运行字段：`paper('a4'|'letter'), layoutMode('auto'|'paperized'|'original'), orientation('auto'|'portrait'|'landscape'), margin('none'|'slim'|'normal'|'wide'), fitWidth, printBackground, avoidBreaks, declutter, expandScrollers, singlePage, filenameTemplate`，以及有界的内部 timing/debug 字段。
+- `storage.local` 键：`defaults`（单对象；不用 `storage.sync`，避免设置随 Chrome Sync 离开本机）。运行字段：`paper('a4'|'letter'), layoutMode('auto'|'paperized'|'original'), orientation('auto'|'portrait'|'landscape'), margin('none'|'slim'|'normal'|'wide'), uiLanguage('auto'|'zh-CN'|'en'), fitWidth, printBackground, avoidBreaks, declutter, expandScrollers, singlePage, filenameTemplate`，以及有界的内部 timing/debug 字段。旧存储缺少 `uiLanguage` 或值非法时归一化为 `auto`。
 - 所有 read/onChanged/setDefaults/runtime override 共用 `normalizeDefaults()`；非法 enum/type 回默认、未知旧字段不进入 runtime。`setDefaults` 仅在 storage 写成功后更新内存 cache，popup 写失败时恢复持久值并显示错误。preset 不在当前范围。
 
 ### 3.5 download.js + offscreen
@@ -96,6 +102,8 @@ web-paperize/
 
 ### 3.6 service-worker.js
 - `busyTabs: Set<number>`；同 tab 重复触发 → 明确报错。
+- popup/运行状态/错误/选择器提示统一使用 `src/i18n` 文案键；`uiLanguage=auto` 时由 `chrome.i18n.getUILanguage()` 解析为 `zh-CN` 或 `en`。
+- 右键菜单由 `rebuildContextMenus(language)` 统一创建；语言设置写入后立即 remove/create，无需重启扩展。manifest 的静态名称/描述/命令使用 Chrome `_locales`，独立跟随浏览器语言。
 - 消息协议（`{action, …}`，响应统一 `{ok, result|message}`）：
   - `getState` → {settings, tab:{id,title,url,capturable}, busy}
   - `capture` {overrides} → 执行并回 {filename, size, title, url}
@@ -104,6 +112,7 @@ web-paperize/
 
 ### 3.7 popup
 - 打开即 `getState`；受限页面禁用 Save 并说明原因（debugger 为安装时声明的 required 权限，无运行时请求流程）。
+- Language 选择写入 `storage.local`；同一 popup 内立即刷新，不需要关闭重开。Auto / 简体中文 / English 只影响扩展自己的 UI，不改网页内容、PDF 正文、标题或文件名。
 - 捕获期间监听 progress；Chrome 接受下载后显示 Download started，只有 downloads terminal=complete 才显示 Saved，interrupted 显示 Download failed。
 - 受限页面（chrome:// 等）禁用 Save 并说明原因。
 

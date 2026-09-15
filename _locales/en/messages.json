@@ -1,0 +1,14 @@
+{
+  "extensionName": {
+    "message": "web-paperize"
+  },
+  "extensionDescription": {
+    "message": "Save the current page as a vector PDF rendered by Chrome itself. Local only, no telemetry."
+  },
+  "actionTitle": {
+    "message": "Save as PDF"
+  },
+  "commandDescription": {
+    "message": "Save the current page as PDF"
+  }
+}

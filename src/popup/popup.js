@@ -4,9 +4,13 @@
  * talks to it.
  */
 
+import { resolveUiLanguage } from '../i18n/i18n.js';
+import { localizePopup } from './localize.js';
+
 const $ = (id) => document.getElementById(id);
 const save = $('save');
 let busy = false;
+let t = localizePopup(document, 'en');
 
 function send(message) {
   return chrome.runtime.sendMessage(message);
@@ -17,7 +21,7 @@ function setBusy(next) {
   const blocked = next || (state.tab && !state.tab.capturable);
   save.disabled = blocked;
   $('pick').disabled = blocked;
-  if (!next) save.textContent = 'Save as PDF';
+  save.textContent = t(next ? 'progress.exporting' : 'popup.save');
 }
 
 function showProgress(text, progress) {
@@ -37,22 +41,34 @@ function showStatus(text, kind) {
   el.textContent = text;
 }
 
-const state = { tab: null };
+const state = { tab: null, settings: null, language: 'en' };
+
+function applyUiLanguage(settings) {
+  const chromeLanguage = chrome.i18n && chrome.i18n.getUILanguage
+    ? chrome.i18n.getUILanguage()
+    : navigator.language;
+  state.language = resolveUiLanguage(settings.uiLanguage, chromeLanguage);
+  t = localizePopup(document, state.language);
+  if (busy) save.textContent = t('progress.exporting');
+}
 
 function applySettings(s) {
+  state.settings = { ...s };
   $('paper').value = s.paper;
   $('layoutMode').value = s.layoutMode;
-  applyLayoutCompat(s.layoutMode);
   $('orientation').value = s.orientation;
   $('margin').value = s.margin;
+  $('uiLanguage').value = s.uiLanguage;
   $('singlePage').checked = s.singlePage;
+  applyUiLanguage(s);
+  applyLayoutCompat(s.layoutMode);
 }
 
 async function persistSetting(patch) {
   try {
     const response = await send({ action: 'setDefaults', patch });
     if (!response || !response.ok) {
-      throw new Error((response && response.message) || 'Could not save settings.');
+      throw new Error((response && response.message) || t('error.saveSettings'));
     }
     applySettings(response.settings);
   } catch (error) {
@@ -64,7 +80,7 @@ async function persistSetting(patch) {
     } catch {
       /* preserve the original save error below */
     }
-    showStatus(error && error.message ? error.message : 'Could not save settings.', 'error');
+    showStatus(error && error.message ? error.message : t('error.saveSettings'), 'error');
   }
 }
 
@@ -72,7 +88,7 @@ async function init() {
   try {
     const response = await send({ action: 'getState' });
     if (!response || !response.ok) {
-      showStatus('Extension state unavailable.', 'error');
+      showStatus(t('error.stateUnavailable'), 'error');
       return;
     }
     state.tab = response.tab;
@@ -80,15 +96,15 @@ async function init() {
     if (response.tab && !response.tab.capturable) {
       save.disabled = true;
       $('pick').disabled = true;
-      showStatus('This page cannot be exported (browser-internal or store pages).', 'error');
+      showStatus(t('error.pageCannotExportPopup'), 'error');
       return;
     }
     if (response.busy) {
       setBusy(true);
-      showProgress('Exporting…');
+      showProgress(t('progress.exporting'));
     }
   } catch (error) {
-    showStatus(error && error.message ? error.message : 'Extension state unavailable.', 'error');
+    showStatus(error && error.message ? error.message : t('error.stateUnavailable'), 'error');
   }
 }
 
@@ -102,10 +118,10 @@ function applyLayoutCompat(mode) {
   $('orientation').disabled = locked;
   $('singlePage').disabled = locked;
   $('layoutHint').textContent = locked
-    ? 'Paperized: reformats the main reading content for paper (portrait, paginated).'
+    ? t('hint.paperized')
     : mode === 'original'
-      ? 'Original: preserves the webpage layout.'
-      : 'Auto: uses Paperized for reliable reading content; otherwise preserves the page.';
+      ? t('hint.original')
+      : t('hint.auto');
 }
 
 $('layoutMode').addEventListener('change', () => {
@@ -124,18 +140,18 @@ $('singlePage').addEventListener('change', () => {
 
 $('pick').addEventListener('click', async () => {
   try {
-    await send({ action: 'pick' });
+    const response = await send({ action: 'pick' });
+    if (!response || !response.ok) throw new Error((response && response.message) || t('error.startPicker'));
     window.close(); // picker needs the page visible; popup would cover it
   } catch (error) {
-    showStatus(error && error.message ? error.message : 'Could not start the picker.', 'error');
+    showStatus(error && error.message ? error.message : t('error.startPicker'), 'error');
   }
 });
 
 save.addEventListener('click', async () => {
   if (busy) return;
   setBusy(true);
-  save.textContent = 'Exporting…';
-  showProgress('Starting…', 0);
+  showProgress(t('progress.starting'), 0);
   try {
     // Pass the URL as a fallback: the popup sees it via activeTab even if the
     // service worker's own re-query comes back without it.
@@ -148,10 +164,10 @@ save.addEventListener('click', async () => {
     }
     const response = await send({ action: 'capture', url });
     if (response && response.ok === false) {
-      showStatus(response.message || 'Export failed.', 'error');
+      showStatus(response.message || t('error.exportFailed'), 'error');
     }
   } catch (error) {
-    showStatus(error && error.message ? error.message : 'Export failed.', 'error');
+    showStatus(error && error.message ? error.message : t('error.exportFailed'), 'error');
   } finally {
     setBusy(false);
   }
@@ -164,29 +180,37 @@ chrome.runtime.onMessage.addListener((message) => {
   }
   if (message.action === 'done') {
     const { filename, size, layout } = message.result || {};
-    let suffix = '';
-    if (layout && layout.actualLayout) {
-      const actual = layout.actualLayout === 'adapter' ? 'Complete content' : layout.actualLayout === 'paperized' ? 'Paperized' : 'Original';
-      suffix = ` · ${actual}${layout.autoFallback ? ' (Auto fallback)' : ''}`;
-    }
-    showStatus(`Saved ${filename} (${Math.max(1, Math.round((size || 0) / 1024))} kB)${suffix}`, 'ok');
+    showStatus(t('status.saved', {
+      filename: filename || '',
+      size: Math.max(1, Math.round((size || 0) / 1024)),
+      suffix: formatLayoutSuffix(layout),
+    }), 'ok');
   }
   if (message.action === 'downloadStarted') {
     const { filename, layout } = message.result || {};
-    let suffix = '';
-    if (layout && layout.actualLayout) {
-      const actual = layout.actualLayout === 'adapter' ? 'Complete content' : layout.actualLayout === 'paperized' ? 'Paperized' : 'Original';
-      suffix = ` · ${actual}${layout.autoFallback ? ' (Auto fallback)' : ''}`;
-    }
-    showStatus(`Download started ${filename || ''}${suffix}`, 'pending');
+    showStatus(t('status.downloadStarted', {
+      filename: filename || '',
+      suffix: formatLayoutSuffix(layout),
+    }), 'pending');
   }
   if (message.action === 'downloadFailed') {
-    showStatus(message.message || 'Download failed.', 'error');
+    showStatus(message.message || t('error.downloadFailed'), 'error');
   }
   if (message.action === 'error') {
-    showStatus(message.message || 'Export failed.', 'error');
+    showStatus(message.message || t('error.exportFailed'), 'error');
   }
   return false;
 });
+
+function formatLayoutSuffix(layout) {
+  if (!layout || !layout.actualLayout) return '';
+  const actualKey = layout.actualLayout === 'adapter'
+    ? 'status.completeContent'
+    : layout.actualLayout === 'paperized'
+      ? 'status.paperized'
+      : 'status.original';
+  const fallback = layout.autoFallback ? ` (${t('status.autoFallback')})` : '';
+  return ` · ${t(actualKey)}${fallback}`;
+}
 
 init();

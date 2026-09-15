@@ -29,6 +29,6 @@ test('iframe selection is documented and fails explicitly without entering captu
   const worker = readFileSync(new URL('../../src/background/service-worker.js', import.meta.url), 'utf8');
   const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
   assert.match(worker, /info\.frameId !== 0/);
-  assert.match(worker, /Selection inside frames is not supported yet/);
+  assert.match(worker, /error\.selectionInFrame/);
   assert.match(readme, /iframe 内选区会明确提示不支持/);
 });

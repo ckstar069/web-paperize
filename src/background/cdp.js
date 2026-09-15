@@ -6,15 +6,18 @@
  * on every path. Design informed by page2pdf (MIT), see THIRD_PARTY_NOTICES.md.
  */
 
+import { translate } from '../i18n/i18n.js';
+
 const PROTOCOL_VERSION = '1.3';
 
 /** tabId -> { count } */
 const attached = new Map();
 
 export class CdpError extends Error {
-  constructor(message) {
+  constructor(message, i18nKey = null) {
     super(message);
     this.name = 'CdpError';
+    if (i18nKey) this.i18nKey = i18nKey;
   }
 }
 
@@ -47,7 +50,8 @@ export function attach(tabId) {
     chrome.debugger.attach({ tabId }, PROTOCOL_VERSION, () => {
       const err = lastError();
       if (err) {
-        reject(new CdpError(explainAttachFailure(err)));
+        const explained = explainAttachFailure(err);
+        reject(new CdpError(explained.message, explained.i18nKey));
         return;
       }
       attached.set(tabId, { count: 1 });
@@ -120,10 +124,16 @@ export async function readStream(tabId, handle) {
 function explainAttachFailure(message) {
   const m = String(message);
   if (m.includes('Another debugger') || m.includes('already attached')) {
-    return 'DevTools (or another debugger) is already attached to this tab. Close it and try again.';
+    return {
+      message: translate('en', 'error.debuggerBusy'),
+      i18nKey: 'error.debuggerBusy',
+    };
   }
   if (m.includes('Cannot access') || m.includes('chrome://') || m.includes('extension')) {
-    return 'This page cannot be exported. Browser-internal and store pages are off limits.';
+    return {
+      message: translate('en', 'error.debuggerForbidden'),
+      i18nKey: 'error.debuggerForbidden',
+    };
   }
-  return m;
+  return { message: m, i18nKey: null };
 }

@@ -19,6 +19,7 @@
   let hint = null;
   let current = null;
   let active = false;
+  let copy = window.__wpzPickerCopy || {};
 
   const ownUi = (el) => el === box || el === tag || el === hint;
 
@@ -91,7 +92,7 @@
       `position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:${Z + 1};pointer-events:none;` +
       "font:500 13px/1 -apple-system,'Segoe UI',Roboto,sans-serif;color:#eaf2ff;" +
       'background:rgba(30,34,66,.92);padding:9px 14px;border-radius:8px;';
-    hint.textContent = 'Click to export · ↑/↓ resize · Esc cancel';
+    hint.textContent = copy.hint || '';
     document.documentElement.append(box, tag, hint);
   }
 
@@ -211,6 +212,11 @@
     dropUi();
   }
 
-  window.__wpzPicker = { start, stop };
+  function setCopy(next) {
+    copy = next && typeof next === 'object' ? next : {};
+    if (hint) hint.textContent = copy.hint || '';
+  }
+
+  window.__wpzPicker = { start, stop, setCopy };
   start();
 })();

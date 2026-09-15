@@ -153,7 +153,13 @@ function tidy(text) {
  * @returns {{messages: Array, title: string}|{error: string}}
  */
 export function normalizeConversation(convo) {
-  if (!convo || typeof convo !== 'object') return { error: 'empty conversation payload' };
+  if (!convo || typeof convo !== 'object') {
+    return {
+      error: 'empty conversation payload',
+      errorCode: 'error.chatAcquire',
+      errorParams: { detail: 'empty conversation payload' },
+    };
+  }
   const mapping = convo.mapping || {};
   const path = [];
   const visited = new Set(); // cycle guard: a malformed graph must not loop
@@ -222,7 +228,12 @@ export function normalizeConversation(convo) {
     messages.push(message);
   }
 
-  if (!messages.length) return { error: 'The conversation contains no exportable messages.' };
+  if (!messages.length) {
+    return {
+      error: 'The conversation contains no exportable messages.',
+      errorCode: 'error.chatEmpty',
+    };
+  }
   return {
     messages,
     title: typeof convo.title === 'string' ? convo.title : '',

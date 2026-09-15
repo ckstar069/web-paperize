@@ -26,6 +26,7 @@ import {
   CSS_PX_PER_INCH,
 } from './util.js';
 import { base64ChunksToBytes, base64ToBytes } from './download.js';
+import { UserFacingError } from '../i18n/i18n.js';
 
 /**
  * Whole Page engine resolution (Case #2 Auto Productization). Pure — the
@@ -132,7 +133,7 @@ async function inject(tabId, func, args = []) {
  * @param {Object} settings Effective settings for this capture.
  * @param {Object} [options]
  * @param {'page'|'element'|'selection'} [options.scope]
- * @param {Function} [options.onProgress] (text, progress?)
+ * @param {Function} [options.onProgress] (i18nKey, progress?, params?)
  */
 export async function capturePage(tabId, settings, options = {}) {
   const onProgress = options.onProgress || (() => {});
@@ -166,9 +167,7 @@ export async function capturePage(tabId, settings, options = {}) {
           // PDF; failing silently would produce a wrong document. zoomTouched
           // is already set once the scope switched, so the finally below
           // restores it even on this throw.
-          throw new Error(
-            'Could not normalise the page zoom for export. Set the tab zoom to 100% and try again.'
-          );
+          throw new UserFacingError('error.zoom');
         }
         await new Promise((r) => setTimeout(r, 150)); // let the reflow settle
       }
@@ -209,7 +208,7 @@ export async function capturePage(tabId, settings, options = {}) {
         // full conversation, so the generic prime/declutter path is skipped
         // entirely (docs/V0.2_PLAN.md §1.4 lifecycle). Failure is explicit —
         // never a silent fallback to a possibly-partial generic export.
-        onProgress('Reading the complete conversation');
+        onProgress('progress.readingConversation');
         await inject(tabId, prep.beginCaptureState);
         await inject(tabId, prep.suspendDarkReader);
         const model = await inject(tabId, async () => {
@@ -217,28 +216,27 @@ export async function capturePage(tabId, settings, options = {}) {
           return mod.acquireConversation();
         });
         if (!model || model.error) {
-          throw new Error(
-            `Complete-chat export failed: ${model ? model.error : 'no result'}. ` +
-              'No PDF was generated — try again, or right-click the page and use ' +
-              '"Save visible page as PDF" for a normal export of the currently loaded content.'
+          throw new UserFacingError(
+            model && model.errorCode ? model.errorCode : 'error.chatAcquire',
+            model && model.errorParams ? model.errorParams : { detail: model ? model.error : 'no-result' }
           );
         }
-        onProgress('Building the printable document');
+        onProgress('progress.buildingPrintableDocument');
         const built = await inject(tabId, async (m) => {
           const mod = await import(chrome.runtime.getURL('src/adapter/chatgpt/materialize.js'));
           return mod.materializeConversation(m);
         }, [model]);
-        if (!built) throw new Error('Failed to build the printable conversation document.');
+        if (!built) throw new UserFacingError('error.chatBuild');
         await new Promise((r) => setTimeout(r, 150)); // let the shadow DOM settle
         // The site DOM sits before the host in the document flow and would
         // print as PDF page 1 (user-verified on two long conversations) —
         // isolate the host exactly like an element pick so only the
         // materialized document prints.
         const isolated = await inject(tabId, prep.isolateElement);
-        if (!isolated) throw new Error('Failed to isolate the materialized document.');
+        if (!isolated) throw new UserFacingError('error.chatIsolate');
         await new Promise((r) => setTimeout(r, 150));
         region = await inject(tabId, prep.measureTarget);
-        if (!region) throw new Error('The materialized document could not be measured.');
+        if (!region) throw new UserFacingError('error.chatMeasure');
         console.log('[wpz] chatgpt adapter:', {
           messages: model.messages.length,
           regionWidth: Math.round(region.width),
@@ -286,13 +284,13 @@ export async function capturePage(tabId, settings, options = {}) {
             // The nested paperized capture's finally CLEARED the screen-media
             // override; the Original engine's contract depends on it.
             await cdp.applyScreenMedia(tabId);
-            onProgress('Auto: keeping the original layout');
+            onProgress('progress.autoOriginal');
           } else if (engine === 'auto' && !terminal) {
             // Paperized-specific failure on a healthy capture: the nested
             // finally fully restored the page, so one Original retry is safe.
             autoMeta = { autoDecision: 'paperized', autoFallback: true, primed: Boolean(err.primed) };
             await cdp.applyScreenMedia(tabId);
-            onProgress('Paperized failed safely — retrying with the original layout');
+            onProgress('progress.paperizedFallback');
           } else {
             throw err; // forced-paperized failure, or terminal: surface as-is
           }
@@ -304,7 +302,7 @@ export async function capturePage(tabId, settings, options = {}) {
         autoDecision: autoMeta ? autoMeta.autoDecision : null,
         autoFallback: autoMeta ? autoMeta.autoFallback : false,
       };
-      onProgress('Loading the whole page');
+      onProgress('progress.loadingWholePage');
       if (elementScope) {
         await inject(tabId, prep.beginCaptureState);
         await inject(tabId, prep.suspendDarkReader);
@@ -324,7 +322,7 @@ export async function capturePage(tabId, settings, options = {}) {
       }]);
 
       if (settings.declutter) {
-        onProgress('Clearing overlays');
+        onProgress('progress.clearingOverlays');
         await inject(tabId, prep.declutterPage, [{ removeOverlays: true, unpin: true }]);
       }
       if (settings.expandScrollers !== false) {
@@ -336,9 +334,9 @@ export async function capturePage(tabId, settings, options = {}) {
       await inject(tabId, prep.forceContentVisibility);
 
       if (scope === 'selection') {
-        onProgress('Isolating the selection');
+        onProgress('progress.isolatingSelection');
         const ok = await inject(tabId, prep.isolateSelection);
-        if (!ok) throw new Error('Select some text on the page first, then export.');
+        if (!ok) throw new UserFacingError('error.selectText');
       }
       if (elementScope) {
         // A picker re-opened while a capture is in flight would inject fresh
@@ -346,13 +344,13 @@ export async function capturePage(tabId, settings, options = {}) {
         await inject(tabId, () => {
           if (window.__wpzPicker && window.__wpzPicker.stop) window.__wpzPicker.stop();
         }).catch(() => {});
-        onProgress('Isolating the picked region');
+        onProgress('progress.isolatingPicked');
         region = await inject(tabId, prep.isolateElement);
-        if (!region) throw new Error('Nothing was picked to export. Try the picker again.');
+        if (!region) throw new UserFacingError('error.nothingPicked');
         // Isolation reflows the document, so settle and measure the target again.
         await new Promise((r) => setTimeout(r, 150));
         region = await inject(tabId, prep.measureTarget);
-        if (!region) throw new Error('The picked region disappeared before it could be exported.');
+        if (!region) throw new UserFacingError('error.pickedDisappeared');
         const pickedInfo = await inject(tabId, () => {
           const el = window.__wpz__ && window.__wpz__.pickedElement;
           if (!el) return null;
@@ -375,10 +373,10 @@ export async function capturePage(tabId, settings, options = {}) {
         await new Promise((r) => setTimeout(r, 50));
       }
 
-      onProgress('Measuring');
+      onProgress('progress.measuring');
       let metrics = await inject(tabId, prep.measurePage);
       if (!metrics || !metrics.height) {
-        throw new Error('The page has no measurable content.');
+        throw new UserFacingError('error.noMeasurableContent');
       }
 
       // Wide content inside a centred container keeps sliding right as the
@@ -466,7 +464,7 @@ export async function capturePage(tabId, settings, options = {}) {
           const mod = await import(chrome.runtime.getURL('src/adapter/chatgpt/materialize.js'));
           return mod.setMaterializedPrintMode(m);
         }, [mode]);
-        if (ok !== true) throw new Error(`Failed to set the chat print mode (${mode}).`);
+        if (ok !== true) throw new UserFacingError('error.chatPrintMode', { mode });
       };
       if (adapterScope) await setPrintMode(oneSheet ? 'continuous' : 'paged');
 
@@ -494,7 +492,7 @@ export async function capturePage(tabId, settings, options = {}) {
           : base64ToBytes(result.data);
 
       const paginateInstead = async (reason) => {
-        onProgress('Content does not fit one sheet — paginating instead');
+        onProgress('progress.paginatingInstead');
         fallbackReason = reason;
         oneSheet = false;
         plan = buildPlan(false);
@@ -503,7 +501,7 @@ export async function capturePage(tabId, settings, options = {}) {
         await inject(tabId, prep.applyPrintCss, [printCssFor(false)]);
       };
 
-      onProgress(oneSheet ? 'Rendering one continuous page' : 'Rendering PDF');
+      onProgress(oneSheet ? 'progress.renderingContinuous' : 'progress.renderingPdf');
       let params = paramsFor(plan);
       let result;
       let bytes = null;

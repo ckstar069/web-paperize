@@ -10,6 +10,7 @@ import {
 } from '../../src/background/capture.js';
 import {
   normalizeLayoutMode,
+  normalizeUiLanguage,
   normalizeDefaults,
   DEFAULTS,
   getDefaults,
@@ -93,6 +94,20 @@ test('layoutMode defaults to auto', () => {
   assert.equal(DEFAULTS.layoutMode, 'auto');
 });
 
+test('uiLanguage defaults to auto and invalid stored values migrate to auto', async () => {
+  assert.equal(DEFAULTS.uiLanguage, 'auto');
+  for (const bad of [undefined, null, '', 'zh', 'EN', 3]) {
+    assert.equal(normalizeUiLanguage(bad), 'auto');
+  }
+  assert.equal(normalizeUiLanguage('zh-CN'), 'zh-CN');
+  assert.equal(normalizeUiLanguage('en'), 'en');
+
+  chromeTest.replaceDefaults({ paper: 'letter' });
+  assert.equal((await getDefaults()).uiLanguage, 'auto', 'legacy storage receives Auto');
+  assert.equal((await setDefaults({ uiLanguage: 'zh-CN' })).uiLanguage, 'zh-CN');
+  assert.equal((await setDefaults({ uiLanguage: 'invalid' })).uiLanguage, 'auto');
+});
+
 test('invalid stored layoutMode normalizes to auto (both exports agree)', () => {
   for (const bad of [undefined, null, '', 'weird', 'AUTO', 3]) {
     assert.equal(normalizeLayoutMode(bad), 'auto');
@@ -157,7 +172,7 @@ test('popup settings persistence surfaces failures instead of empty catch handle
   const source = await import('node:fs').then((fs) =>
     fs.readFileSync(new URL('../../src/popup/popup.js', import.meta.url), 'utf8'));
   assert.match(source, /async function persistSetting/);
-  assert.match(source, /showStatus\([^\n]*Could not save settings/);
+  assert.match(source, /showStatus\([^\n]*error\.saveSettings/);
   assert.doesNotMatch(source, /setDefaults[^\n]*\.catch\(\(\) => \{\}\)/);
 });
 

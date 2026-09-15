@@ -32,6 +32,7 @@ import {
   paperInches,
   CSS_PX_PER_INCH,
 } from './util.js';
+import { UserFacingError } from '../i18n/i18n.js';
 
 async function inject(tabId, func, args = []) {
   const [result] = await chrome.scripting.executeScript({
@@ -69,14 +70,14 @@ export async function paperizeCapture(tabId, settings, options = {}) {
           zoomTouched = true;
           await chrome.tabs.setZoom(tabId, 1);
         } catch {
-          throw new Error('Could not normalise the page zoom for export.');
+          throw new UserFacingError('error.zoomShort');
         }
         await new Promise((r) => setTimeout(r, 150));
       }
 
       await cdp.applyScreenMedia(tabId);
 
-      onProgress('Loading the page content');
+      onProgress('progress.loadingPageContent');
       stage.at = 'prime';
       await inject(tabId, prep.beginCaptureState);
       await inject(tabId, prep.suspendDarkReader);
@@ -90,7 +91,7 @@ export async function paperizeCapture(tabId, settings, options = {}) {
       ]);
       primedFlag.done = true;
 
-      onProgress('Extracting the article');
+      onProgress('progress.extractingArticle');
       stage.at = 'extract';
       await chrome.scripting.executeScript({
         target: { tabId },
@@ -101,7 +102,9 @@ export async function paperizeCapture(tabId, settings, options = {}) {
       });
       const extracted = await inject(tabId, extractPaperArticle);
       if (!extracted || !extracted.ok) {
-        throw new Error(`Paperized extraction failed: ${extracted ? extracted.error : 'no-result'}`);
+        throw new UserFacingError('error.paperExtraction', {
+          detail: extracted ? extracted.error : 'no-result',
+        });
       }
       if (options.autoProbe) {
         // Auto (content-first): decide on the SAME extraction — no double work.
@@ -140,20 +143,20 @@ export async function paperizeCapture(tabId, settings, options = {}) {
         });
       }
 
-      onProgress('Building the paper document');
+      onProgress('progress.buildingPaperDocument');
       stage.at = 'build';
       const built = await inject(tabId, buildPaperDocument, [extracted.model, PAPER_CSS]);
-      if (!built || !built.ok) throw new Error('Failed to build the paper document.');
+      if (!built || !built.ok) throw new UserFacingError('error.paperBuild');
       await new Promise((r) => setTimeout(r, 150));
 
       stage.at = 'isolate';
       const region = await inject(tabId, isolatePaperHost);
-      if (!region) throw new Error('Failed to isolate the paper document.');
+      if (!region) throw new UserFacingError('error.paperIsolate');
       await new Promise((r) => setTimeout(r, 150));
 
       // The paperized print state: source page fully invisible for the print.
       if (!(await inject(tabId, applyPaperPrintState))) {
-        throw new Error('Failed to enter the paperized print state.');
+        throw new UserFacingError('error.paperPrintState');
       }
       await new Promise((r) => setTimeout(r, 100));
 
@@ -164,7 +167,7 @@ export async function paperizeCapture(tabId, settings, options = {}) {
 
       await inject(tabId, prep.applyPrintCss, [BASE_CSS]);
 
-      onProgress('Rendering PDF');
+      onProgress('progress.renderingPdf');
       stage.at = 'print';
       const paper = paperInches({ ...settings, orientation: 'portrait' });
       const margin = marginInches(settings);

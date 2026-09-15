@@ -7,14 +7,16 @@
  */
 
 import { normalizeLayoutMode } from './util.js';
+import { normalizeUiLanguage } from '../i18n/i18n.js';
 
-export { normalizeLayoutMode };
+export { normalizeLayoutMode, normalizeUiLanguage };
 export const DEFAULTS = {
   paper: 'a4', // 'a4' | 'letter'
   layoutMode: 'auto', // 'auto' | 'paperized' | 'original' — Whole Page only (Case #2 Auto Productization)
   /** normalizeLayoutMode() guards stored values; unknown falls back to 'auto'. */
   orientation: 'auto', // 'auto' | 'portrait' | 'landscape'
   margin: 'slim', // 'none' | 'slim' | 'normal' | 'wide'
+  uiLanguage: 'auto', // 'auto' | 'zh-CN' | 'en'
   fitWidth: true,
   printBackground: true,
   avoidBreaks: true,
@@ -56,6 +58,7 @@ export function normalizeDefaults(value) {
     if (allowed.has(input[key])) next[key] = input[key];
   }
   next.layoutMode = normalizeLayoutMode(input.layoutMode);
+  next.uiLanguage = normalizeUiLanguage(input.uiLanguage);
   for (const key of BOOLEANS) {
     if (typeof input[key] === 'boolean') next[key] = input[key];
   }

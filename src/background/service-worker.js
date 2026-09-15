@@ -11,6 +11,13 @@ import { capturePage } from './capture.js';
 import { getDefaults, normalizeDefaults, setDefaults } from './settings.js';
 import { buildFilename } from './util.js';
 import { reconcilePendingDownloads, savePdf, setDownloadTerminalHandler } from './download.js';
+import { rebuildContextMenus } from './context-menus.js';
+import {
+  UserFacingError,
+  createTranslator,
+  errorMessage,
+  resolveUiLanguage,
+} from '../i18n/i18n.js';
 
 const busyTabs = new Set();
 /** tabId -> chrome.debugger detach reason, for accurate error copy. */
@@ -39,7 +46,24 @@ function toPopup(payload) {
   chrome.runtime.sendMessage({ target: 'popup', ...payload }).catch(() => {});
 }
 
-setDownloadTerminalHandler(({ downloadId, state, error, entry }) => {
+function languageFor(settings) {
+  const chromeLanguage = chrome.i18n && chrome.i18n.getUILanguage
+    ? chrome.i18n.getUILanguage()
+    : '';
+  return resolveUiLanguage(settings && settings.uiLanguage, chromeLanguage);
+}
+
+async function configuredLanguage() {
+  return languageFor(await getDefaults());
+}
+
+async function rebuildConfiguredMenus(settings = null) {
+  await rebuildContextMenus(languageFor(settings || (await getDefaults())));
+}
+
+setDownloadTerminalHandler(async ({ downloadId, state, error, entry }) => {
+  const language = await configuredLanguage();
+  const t = createTranslator(language);
   const result = {
     downloadId,
     filename: entry.filename,
@@ -53,8 +77,10 @@ setDownloadTerminalHandler(({ downloadId, state, error, entry }) => {
   } else {
     setBadge('ERR', '#dc2626');
     clearBadgeSoon(4000);
-    const suffix = error ? ` (${error})` : '';
-    toPopup({ action: 'downloadFailed', message: `Download failed${suffix}.`, result });
+    const message = error
+      ? t('error.downloadFailedDetail', { detail: error })
+      : t('error.downloadFailed');
+    toPopup({ action: 'downloadFailed', message, result });
   }
 });
 
@@ -64,15 +90,17 @@ void reconcilePendingDownloads().catch((error) => {
 });
 
 async function runCapture(tab, { scope = 'page', forceGeneric = false, layout = undefined, overrides = null } = {}) {
-  if (!tab || !tab.id) throw new Error('No tab to export.');
+  const settings = normalizeDefaults({ ...(await getDefaults()), ...(overrides || {}) });
+  const language = languageFor(settings);
+  const t = createTranslator(language);
+  if (!tab || !tab.id) throw new UserFacingError('error.noTab');
   if (!capturable(tab.url)) {
-    throw new Error('This page cannot be exported. Open a normal web page and try again.');
+    throw new UserFacingError('error.pageCannotExport');
   }
-  if (busyTabs.has(tab.id)) throw new Error('This tab is already being exported.');
+  if (busyTabs.has(tab.id)) throw new UserFacingError('error.alreadyExporting');
 
   busyTabs.add(tab.id);
   detachedExternally.delete(tab.id);
-  const settings = normalizeDefaults({ ...(await getDefaults()), ...(overrides || {}) });
   setBadge('...');
 
   try {
@@ -81,7 +109,11 @@ async function runCapture(tab, { scope = 'page', forceGeneric = false, layout = 
       forceGeneric,
       layout,
       detachReasonOf: (tabId) => detachedExternally.get(tabId),
-      onProgress: (text, progress) => toPopup({ action: 'progress', text, progress }),
+      onProgress: (key, progress, params) => toPopup({
+        action: 'progress',
+        text: t(key, params),
+        progress,
+      }),
     });
     const filename = buildFilename(settings.filenameTemplate, metrics);
     const layoutInfo = metrics && metrics.actualLayout
@@ -98,20 +130,22 @@ async function runCapture(tab, { scope = 'page', forceGeneric = false, layout = 
     });
     return { ...saved, title: metrics.title, url: metrics.url, layout: layoutInfo };
   } catch (error) {
-    let message = error && error.message ? error.message : 'Export failed.';
+    let message = errorMessage(error, language);
     const detachReason = detachedExternally.get(tab.id);
     if (detachReason === 'target_closed') {
-      message = 'Export interrupted: the tab was closed.';
+      message = t('error.interruptedClosed');
     } else if (detachReason === 'canceled_by_user') {
-      message = 'Export interrupted: the debugging bar was dismissed.';
+      message = t('error.interruptedDismissed');
     } else if (detachReason) {
       // Unknown/unenumerated reason: stay accurate rather than guessing.
-      message = 'Export interrupted: the debugging session ended unexpectedly.';
+      message = t('error.interruptedUnexpected');
     }
     setBadge('ERR', '#dc2626');
     clearBadgeSoon(4000);
     toPopup({ action: 'error', message });
-    throw new Error(message);
+    const surfaced = new Error(message);
+    surfaced.localizedMessage = true;
+    throw surfaced;
   } finally {
     // The ONLY place busy state is released.
     busyTabs.delete(tab.id);
@@ -120,14 +154,26 @@ async function runCapture(tab, { scope = 'page', forceGeneric = false, layout = 
 }
 
 async function startPicker(tab) {
+  const language = await configuredLanguage();
+  const t = createTranslator(language);
   if (!tab || !capturable(tab.url)) {
-    throw new Error('The picker cannot run on this page.');
+    throw new UserFacingError('error.pickerCannotRun');
   }
   if (busyTabs.has(tab.id)) {
-    throw new Error('This tab is already being exported.');
+    throw new UserFacingError('error.alreadyExporting');
   }
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },
+    world: 'ISOLATED',
+    func: (copy) => {
+      window.__wpzPickerCopy = copy;
+      if (window.__wpzPicker && window.__wpzPicker.setCopy) window.__wpzPicker.setCopy(copy);
+    },
+    args: [{ hint: t('picker.hint') }],
+  });
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    world: 'ISOLATED',
     files: ['src/content/picker.js'],
   });
   return true;
@@ -181,35 +227,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
         case 'setDefaults': {
-          sendResponse({ ok: true, settings: await setDefaults(message.patch || {}) });
+          const patch = message.patch || {};
+          const settings = await setDefaults(patch);
+          if (Object.prototype.hasOwnProperty.call(patch, 'uiLanguage')) {
+            await rebuildConfiguredMenus(settings);
+          }
+          sendResponse({ ok: true, settings });
           break;
         }
         default:
-          sendResponse({ ok: false, message: `Unknown action: ${message.action}` });
+          sendResponse({
+            ok: false,
+            message: createTranslator(await configuredLanguage())('error.unknownAction', { action: message.action }),
+          });
       }
     } catch (error) {
-      sendResponse({ ok: false, message: error && error.message ? error.message : String(error) });
+      const language = await configuredLanguage().catch(() => 'en');
+      const fallback = message.action === 'setDefaults' ? 'error.saveSettings' : 'error.exportFailed';
+      sendResponse({ ok: false, message: errorMessage(error, language, fallback) });
     }
   })();
 
   return true;
 });
 
-const MENUS = [
-  { id: 'wpz-page', title: 'Save this page as PDF', contexts: ['page', 'frame'] },
-  { id: 'wpz-selection', title: 'Save selection as PDF', contexts: ['selection'] },
-  { id: 'wpz-element', title: 'Pick an element to save…', contexts: ['page'] },
-  {
-    id: 'wpz-page-generic',
-    title: 'Save visible page as PDF (no adapter)',
-    contexts: ['page', 'frame'],    documentUrlPatterns: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
-  },
-];
-
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.removeAll(() => {
-    for (const menu of MENUS) chrome.contextMenus.create(menu);
-  });
+  void rebuildConfiguredMenus();
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -221,7 +264,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     }
     if (info.menuItemId === 'wpz-selection') {
       if (typeof info.frameId === 'number' && info.frameId !== 0) {
-        const message = 'Selection inside frames is not supported yet.';
+        const language = await configuredLanguage();
+        const message = createTranslator(language)('error.selectionInFrame');
         setBadge('ERR', '#dc2626');
         clearBadgeSoon(4000);
         toPopup({ action: 'error', message });

@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "web-paperize",
+  "name": "__MSG_extensionName__",
   "version": "0.2.1",
-  "description": "Save the current page as a vector PDF rendered by Chrome itself. Local only, no telemetry.",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
   "minimum_chrome_version": "118",
   "permissions": [
     "activeTab",
@@ -19,12 +20,12 @@
   },
   "action": {
     "default_popup": "src/popup/popup.html",
-    "default_title": "Save as PDF"
+    "default_title": "__MSG_actionTitle__"
   },
   "commands": {
     "capture-page": {
       "suggested_key": { "default": "Alt+Shift+P" },
-      "description": "Save the current page as PDF"
+      "description": "__MSG_commandDescription__"
     }
   },
   "icons": {

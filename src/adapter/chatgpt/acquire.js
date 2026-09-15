@@ -16,7 +16,10 @@ import { normalizeConversation } from './normalize.js';
 export async function acquireConversation() {
   const convId = location.pathname.split('/').filter(Boolean).pop();
   if (!/^[0-9a-f-]{20,}$/i.test(convId)) {
-    return { error: 'This page is not an open ChatGPT conversation.' };
+    return {
+      error: 'This page is not an open ChatGPT conversation.',
+      errorCode: 'error.chatNotOpen',
+    };
   }
 
   const withDeadline = (url, opts, ms, use) => {
@@ -35,9 +38,18 @@ export async function acquireConversation() {
     });
     accessToken = session && session.accessToken;
   } catch (e) {
-    return { error: `Could not read the ChatGPT session (${e.message}).` };
+    return {
+      error: `Could not read the ChatGPT session (${e.message}).`,
+      errorCode: 'error.chatSession',
+      errorParams: { detail: e.message },
+    };
   }
-  if (!accessToken) return { error: 'Not logged in to ChatGPT (no access token).' };
+  if (!accessToken) {
+    return {
+      error: 'Not logged in to ChatGPT (no access token).',
+      errorCode: 'error.chatNotLoggedIn',
+    };
+  }
 
   let convo;
   try {
@@ -51,11 +63,21 @@ export async function acquireConversation() {
       }
     );
   } catch (e) {
-    return { error: `Failed to fetch the conversation: ${e.message}` };
+    return {
+      error: `Failed to fetch the conversation: ${e.message}`,
+      errorCode: 'error.chatFetch',
+      errorParams: { detail: e.message },
+    };
   }
 
   const normalized = normalizeConversation(convo);
-  if (normalized.error) return { error: normalized.error };
+  if (normalized.error) {
+    return {
+      error: normalized.error,
+      errorCode: normalized.errorCode || 'error.chatAcquire',
+      errorParams: normalized.errorParams || { detail: normalized.error },
+    };
+  }
 
   // Resolve conversation images to signed URLs — requests go only to
   // ChatGPT/OpenAI services, the token stays in memory, and nothing is logged.
