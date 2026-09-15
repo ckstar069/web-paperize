@@ -181,6 +181,16 @@ test('manifest uses standard Chrome locale messages for static surfaces', () => 
   assert.equal(manifest.description, '__MSG_extensionDescription__');
   assert.equal(manifest.action.default_title, '__MSG_actionTitle__');
   assert.equal(manifest.commands['capture-page'].description, '__MSG_commandDescription__');
+  assert.equal(en.extensionName.message, 'Web Paperize');
+  assert.equal(zh.extensionName.message, 'Web Paperize');
+  assert.equal(
+    en.extensionDescription.message,
+    "Save web content as high-quality PDFs using Chrome's native rendering. No Web Paperize server or telemetry."
+  );
+  assert.equal(
+    zh.extensionDescription.message,
+    '使用 Chrome 原生渲染将网页内容保存为高质量 PDF。不使用 Web Paperize 服务器，不包含遥测。'
+  );
   for (const key of ['extensionName', 'extensionDescription', 'actionTitle', 'commandDescription']) {
     assert.ok(en[key]?.message);
     assert.ok(zh[key]?.message);

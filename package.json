@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "package:store": "node scripts/package-store.mjs"
   },
   "devDependencies": {
     "jsdom": "^30.0.1"

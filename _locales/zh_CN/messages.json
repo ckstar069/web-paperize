@@ -1,9 +1,9 @@
 {
   "extensionName": {
-    "message": "web-paperize"
+    "message": "Web Paperize"
   },
   "extensionDescription": {
-    "message": "使用 Chrome 原生渲染将当前页面保存为矢量 PDF。仅本地运行，不包含遥测。"
+    "message": "使用 Chrome 原生渲染将网页内容保存为高质量 PDF。不使用 Web Paperize 服务器，不包含遥测。"
   },
   "actionTitle": {
     "message": "保存为 PDF"

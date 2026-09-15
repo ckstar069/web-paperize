@@ -1,4 +1,4 @@
-# web-paperize
+# Web Paperize
 
 本地优先的 Chrome 扩展（Chrome 118+）：把当前网页导出为高质量**矢量 PDF**——文字可选中、可搜索、链接可点击，排版尽量还原屏幕所见。
 
@@ -20,11 +20,17 @@
   ↓ restorePage（恢复插件主动施加的页面修改）
 ```
 
-纯本地处理：无自有服务器、无遥测。ChatGPT 完整会话导出仅向 ChatGPT/OpenAI 自身服务请求会话数据（与页面自身加载行为一致）；不会把任何内容发送给 web-paperize 服务或无关第三方。
+本地处理优先：不使用 Web Paperize 服务器，不包含遥测。普通网页导出由 Chrome 在浏览器本地处理；只有用户主动要求导出 ChatGPT 完整会话时，扩展才会使用现有登录会话直接向 ChatGPT/OpenAI 请求该会话及所需资源。开发者不会收到令牌或导出内容，数据也不会发送给无关第三方。
+
+- [隐私政策 / Privacy Policy](PRIVACY.md)
+- [Chrome Web Store 上架准备](docs/STORE_READINESS.md)
+- [Chrome Web Store 审核说明](docs/STORE_REVIEW_NOTES.md)
 
 ## 状态
 
 V0.2.0 已实现并通过真机验证（2026-09-10，见 [docs/benchmark/2026-09-10/README.md](docs/benchmark/2026-09-10/README.md)）。
+
+当前第一个 Chrome Web Store Release Candidate 使用 `0.2.2`；这是 0.2 系列的上架准备版本，不代表 V0.3 功能阶段。发行包必须通过 `npm run package:store` 从显式白名单生成，不能直接压缩仓库。
 
 - **整页导出**：工具栏图标 → Save as PDF
 - **元素导出**：图标 → Pick an element…（或右键）→ 悬停出现紫框（跟随鼠标），**↑/↓ 扩大/缩小选区**，点击导出所选区块
