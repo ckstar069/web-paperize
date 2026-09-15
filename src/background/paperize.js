@@ -89,6 +89,13 @@ export async function paperizeCapture(tabId, settings, options = {}) {
           fontTimeout: settings.fontTimeout,
         },
       ]);
+      // Paperized extraction must see the same complete rendered content as
+      // Original capture: open details, unroll bounded inner scrollers, and
+      // make content-visibility:auto subtrees available to Readability. Every
+      // change is journalled by prepare.js and restored in this function's
+      // finally block.
+      await inject(tabId, prep.expandContent);
+      await inject(tabId, prep.forceContentVisibility);
       primedFlag.done = true;
 
       onProgress('progress.extractingArticle');

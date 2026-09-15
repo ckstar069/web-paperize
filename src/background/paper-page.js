@@ -124,6 +124,43 @@ export function extractPaperArticle() {
   }
   diagnostics.images = { live: liveImgs.length, normalized, unresolvable };
 
+  // Readability treats words such as "scroll" in an id/class as negative
+  // chrome hints. For containers that expandContent positively identified as
+  // bounded content scrollers, remove only those heuristic labels from the
+  // detached clone so their now-unrolled prose is not discarded. The live
+  // page keeps its original attributes and restorePage removes our marker.
+  const expandedScrollers = Array.from(clone.querySelectorAll('[data-wpz-expanded-scroller]'));
+  for (const el of expandedScrollers) {
+    el.removeAttribute('id');
+    el.removeAttribute('class');
+    el.removeAttribute('data-wpz-expanded-scroller');
+  }
+  diagnostics.expandedScrollersProtected = expandedScrollers.length;
+
+  // Readability works from markup, not the rendered skip state. Preserve the
+  // source page's explicit content-visibility:hidden semantics by pruning the
+  // corresponding clone nodes before extraction. content-visibility:auto is
+  // intentionally retained: primePage makes it printable temporarily, while
+  // hidden content is an author decision that must not be surfaced in a PDF.
+  const liveElements = Array.from(document.querySelectorAll('*'));
+  const cloneElements = Array.from(clone.querySelectorAll('*'));
+  let hiddenPruned = 0;
+  const elementPairs = Math.min(liveElements.length, cloneElements.length);
+  for (let i = 0; i < elementPairs; i += 1) {
+    let contentVisibility = '';
+    try {
+      const style = getComputedStyle(liveElements[i]);
+      contentVisibility = style.getPropertyValue('content-visibility') || style.contentVisibility || '';
+    } catch {
+      contentVisibility = '';
+    }
+    if (String(contentVisibility).trim() === 'hidden') {
+      cloneElements[i].remove();
+      hiddenPruned += 1;
+    }
+  }
+  diagnostics.contentVisibilityHiddenPruned = hiddenPruned;
+
   // -- Readability on the clone --
   diagnostics.isProbablyReaderable = isProbablyReaderable(clone);
   if (typeof Readability !== 'function') {

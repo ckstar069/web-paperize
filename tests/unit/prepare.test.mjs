@@ -40,6 +40,57 @@ test('injected functions address the shared store via window, never globals', ()
   }
 });
 
+test('primePage preserves spaces in direct data-src URLs and restores the missing src', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dataUri = "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Ctext%3Ehello world%3C/text%3E%3C/svg%3E";
+  const dom = new JSDOM(
+    `<!DOCTYPE html><html><body><img id="deferred" data-src="${dataUri}"></body></html>`,
+    { url: 'https://example.local/x', runScripts: 'outside-only', pretendToBeVisual: true }
+  );
+  const win = dom.window;
+  win.scrollTo = () => {};
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  run(prep.beginCaptureState);
+
+  await run(prep.primePage, {
+    scrollThrough: false,
+    imageTimeout: 1,
+    fontTimeout: 1,
+  });
+  assert.equal(win.document.getElementById('deferred').getAttribute('src'), dataUri);
+
+  run(prep.restorePage);
+  assert.equal(win.document.getElementById('deferred').getAttribute('src'), null);
+});
+
+test('expandContent marks bounded scrollers for extraction and restore removes the marker', async () => {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM(
+    '<!DOCTYPE html><html><body><div id="feed" style="height:100px;overflow-y:auto"><p>one</p><p>two</p></div></body></html>',
+    { url: 'https://example.local/x', runScripts: 'outside-only' }
+  );
+  const win = dom.window;
+  win.scrollTo = () => {};
+  const run = (fn, ...args) => win.eval(`(${fn.toString()})`)(...args);
+  const feed = win.document.getElementById('feed');
+  Object.defineProperties(feed, {
+    clientHeight: { value: 100 },
+    scrollHeight: { value: 500 },
+    clientWidth: { value: 300 },
+    scrollWidth: { value: 300 },
+  });
+  run(prep.beginCaptureState);
+
+  assert.equal(run(prep.expandContent), 1);
+  assert.equal(feed.hasAttribute('data-wpz-expanded-scroller'), true);
+  assert.equal(feed.style.getPropertyValue('overflow-y'), 'visible');
+
+  run(prep.restorePage);
+  assert.equal(feed.hasAttribute('data-wpz-expanded-scroller'), false);
+  assert.equal(feed.style.getPropertyValue('height'), '100px');
+  assert.equal(feed.style.getPropertyValue('overflow-y'), 'auto');
+});
+
 test('owned light-paper capture suspends Dark Reader sheets and restores them exactly', async () => {
   const { JSDOM } = await import('jsdom');
   const dom = new JSDOM(

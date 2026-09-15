@@ -126,6 +126,38 @@ test('C: dual media keeps the semantic img with an absolute src', () => {
   assert.ok(!html.includes('visible-layer.png'), 'background-image layer does not enter the paper document');
 });
 
+test('Paperized extraction preserves auto content but prunes content-visibility hidden content', () => {
+  const { win } = makeWindow(`<!DOCTYPE html><html><head><title>Visibility semantics</title><style>
+    .deferred { content-visibility: auto; }
+    .intentionally-hidden { content-visibility: hidden; }
+    </style></head><body><article><h1>Visibility semantics</h1>
+    ${longBody(8)}
+    <div class="deferred"><p>CV-AUTO-SHOULD-SURVIVE</p></div>
+    <div class="intentionally-hidden"><p>CV-HIDDEN-MUST-NOT-SURFACE</p></div>
+    ${longBody(8)}
+    </article></body></html>`);
+  const res = runInWindow(win, paperPage.extractPaperArticle);
+  assert.ok(res.ok);
+  assert.match(res.model.contentHtml, /CV-AUTO-SHOULD-SURVIVE/);
+  assert.doesNotMatch(res.model.contentHtml, /CV-HIDDEN-MUST-NOT-SURFACE/);
+  assert.equal(res.diagnostics.contentVisibilityHiddenPruned, 1);
+});
+
+test('Paperized extraction protects marked bounded scrollers from Readability negative-name heuristics', () => {
+  const { win } = makeWindow(`<!DOCTYPE html><html><head><title>Scroller article</title></head><body>
+    <article><h1>Scroller article</h1>${longBody(8)}
+      <div id="story-scroller" class="inner-scroller" data-wpz-expanded-scroller>
+        ${longBody(6)}<p>END-OF-SCROLLER-MARKER</p>
+      </div>
+      ${longBody(8)}
+    </article>
+  </body></html>`);
+  const res = runInWindow(win, paperPage.extractPaperArticle);
+  assert.ok(res.ok);
+  assert.match(res.model.contentHtml, /END-OF-SCROLLER-MARKER/);
+  assert.equal(res.diagnostics.expandedScrollersProtected, 1);
+});
+
 // ---------------------------------------------------------------------------
 // A/B/I — print state isolation, min-width hardening, restore round trip
 // ---------------------------------------------------------------------------

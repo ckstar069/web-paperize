@@ -145,14 +145,19 @@ export async function primePage(options) {
       img.decoding = 'sync';
     }
     if (!img.getAttribute('src')) {
-      const fallback =
+      const directFallback =
         img.dataset.src ||
         img.dataset.original ||
-        img.dataset.lazySrc ||
-        img.getAttribute('data-srcset');
+        img.dataset.lazySrc;
+      const srcsetFallback = img.getAttribute('data-srcset');
+      // A data-* URL may legally contain spaces (for example an inline SVG
+      // data URI). Only srcset candidates carry a trailing density/width
+      // descriptor that must be split off; splitting every fallback at the
+      // first space truncates otherwise valid URLs into broken images.
+      const fallback = directFallback || (srcsetFallback && srcsetFallback.trim().split(/\s+/)[0]);
       if (fallback) {
         record(img, 'src', true);
-        img.setAttribute('src', fallback.split(' ')[0]);
+        img.setAttribute('src', fallback);
       }
     }
   }
@@ -330,6 +335,11 @@ export function expandContent() {
   const store = (window.__wpz__ = window.__wpz__ || { undo: [], injected: [] });
   const record = store.record;
   let expanded = 0;
+  const markExpandedScroller = (el) => {
+    if (el.hasAttribute('data-wpz-expanded-scroller')) return;
+    if (record) record(el, 'data-wpz-expanded-scroller', true);
+    el.setAttribute('data-wpz-expanded-scroller', '');
+  };
 
   for (const details of document.querySelectorAll('details:not([open])')) {
     if (record) record(details, 'open', true);
@@ -356,6 +366,7 @@ export function expandContent() {
     // Long feeds are meant to scroll; expanding one would drown the sheet.
     const yProtected = scrollsY && el.scrollHeight > 20000;
     if (scrollsY && !yProtected) {
+      markExpandedScroller(el);
       if (record) {
         record(el, 'max-height');
         record(el, 'height');
@@ -372,6 +383,7 @@ export function expandContent() {
     // to a clipped one computes back to clipped), so a container whose long
     // vertical feed is protected must not be unrolled sideways either.
     if (scrollsX && !yProtected && el.scrollWidth <= 20000) {
+      markExpandedScroller(el);
       if (record) {
         record(el, 'overflow-x');
         record(el, 'overflow-y');
